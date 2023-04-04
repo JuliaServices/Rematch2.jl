@@ -1,11 +1,12 @@
 
-ntypes::Int = 100
-ntests::Int = 5000
-nrepeat::Int = 3
-seed::Int = 12345
+const ntypes = 100
+const ntests = 5000
+const nrepeat = 3
+const seed = 12345
+
 Random.seed!(seed)
 
-all_types::Vector{Type} = map(1:ntypes) do i
+const all_types::Vector{Type} = map(1:ntypes) do i
     sym = Symbol("C", i)
     def = :(struct $sym end)
     eval(def)
