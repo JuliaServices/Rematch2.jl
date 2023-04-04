@@ -3,6 +3,8 @@ uuid = "351a7294-9038-49b6-b9cf-e076b05af63f"
 authors = ["Neal Gafter <neal@gafter.com> and contributors"]
 version = "0.1.0"
 
+[deps]
+
 [compat]
 julia = "1.3"
 
