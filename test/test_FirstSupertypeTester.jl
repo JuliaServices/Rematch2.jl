@@ -6,12 +6,12 @@ const seed = 12345
 
 Random.seed!(seed)
 
-const all_types::Vector{Type} = map(1:ntypes) do i
+const all_types = Vector{Type}(map(1:ntypes) do i
     sym = Symbol("C", i)
     def = :(struct $sym end)
     eval(def)
-    eval(sym)
-end
+    eval(sym)::Type
+end)
 struct CN end
 
 @testset "FirstSupertypeTester.jl" begin
