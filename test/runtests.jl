@@ -1,7 +1,13 @@
-using Rematch2
-using Test
+module Rematch2Tests
 
-@testset "Rematch2.jl" begin
-    # Write your tests here.
-    @test true
-end
+using Rematch2
+using ReTest
+using Random
+
+include("test_FirstSupertypeTester.jl")
+include("rematch.jl")
+include("rematch2.jl")
+
+retest(Rematch2Tests)
+
+end # module

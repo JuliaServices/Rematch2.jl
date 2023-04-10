@@ -1,5 +1,9 @@
 module Rematch2
 
-# Write your package code here.
+import MacroTools
+import MacroTools: @capture
+
+include("FirstSupertypeTester.jl")
+include("PatternBinder.jl")
 
 end
