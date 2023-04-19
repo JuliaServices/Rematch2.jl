@@ -1,4 +1,3 @@
-using Rematch2: FirstSupertypeTester, next_supertype
 
 const ntypes = 5 # 100
 const ntests = 10 # 5000

@@ -105,12 +105,13 @@ Note that unlike the _assignment syntax_, this does not create any variable bind
 * `(x,y,z)` matches `Tuple`s with 3 entries matching `x,y,z`
 * `[x,y...,z]` matches `AbstractArray`s with at least 2 entries, where `x` matches the first entry, `z` matches the last entry and `y` matches the remaining entries.
 * `(x,y...,z)` matches `Tuple`s with at least 2 entries, where `x` matches the first entry, `z` matches the last entry and `y` matches the remaining entries.
-* `_::T` matches any subtype (`isa`) of T
+* `::T` matches any subtype (`isa`) of T
+* `x::T` matches any subtype (`isa`) of T that also matches the pattern `x`
 * `x || y` matches values which match either `x` or `y` (only variables which exist in both branches will be bound)
 * `x && y` matches values which match both `x` and `y`
 * `x where condition` matches only if `condition` is true (`condition` may use any variables that occur earlier in the pattern eg `(x, y, z where x + y > z)`)
 * Anything else is treated as a constant and tested for equality
-* Expressions can be interpolated in as constants via standard interpolation syntax `$(x)`
+* Expressions can be interpolated in as constants via standard interpolation syntax `$(x)`.  Interpolations may use previously bound variables.
 
 Patterns can be nested arbitrarily.
 
@@ -118,7 +119,7 @@ Repeated variables only match if they are equal (`==`). For example `(x,x)` matc
 
 ## Differences from [Match.jl](https://github.com/kmsquire/Match.jl)
 
-This package was branched from the original [Match.jl](https://github.com/kmsquire/Match.jl). It now differs in several ways:
+This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/Rematch.jl), which was branched from the original [Match.jl](https://github.com/kmsquire/Match.jl). It now differs in several ways:
 
 * If no branches are matched, throws `MatchFailure` instead of returning nothing.
 * Matching against a struct with the wrong number of fields produces an error instead of silently failing.
@@ -126,5 +127,7 @@ This package was branched from the original [Match.jl](https://github.com/kmsqui
 * The syntax for guards is `x where x > 1` instead of `x, if x > 1 end` and can occur anywhere in a pattern.
 * Structs can be matched by field-names, allowing partial matches: `@match Foo(1,2) begin Foo(y=2) => :ok end` returns `:ok`.
 * Patterns support interpolation, ie `let x=1; @match ($x,$(x+1)) = (1,2); end` is a match.
+* Previously bound variables may be used in interpolations, ie `@match (x, $(x+2)) = (1, 3)` is a match.
+* A pure type match (without another pattern) can be written as `::Type`.
 * No support (yet) for matching `Regex` or `UnitRange`.
 * No support (yet) for matching against multidimensional arrays - all array patterns use linear indexing.

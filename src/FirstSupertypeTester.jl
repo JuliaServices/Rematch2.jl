@@ -3,7 +3,8 @@ struct SupertypeTesterKey
     start_index::Int
 end
 
-function brute_next_supertype(@nospecialize(t::Type), types::Vector{Type}, start_index::Int = 1)::Int
+function brute_next_supertype(
+    @nospecialize(t::Type), types::Vector{Type}, start_index::Int = 1)::Int
     n::Int = length(types)
     for i::Int in start_index:n
         t <: types[i] && return i
@@ -51,7 +52,8 @@ function next_supertype_slow(stt::FirstSupertypeTester, key::SupertypeTesterKey)
     end
 end
 
-function next_supertype(@nospecialize(t::Type), stt::FirstSupertypeTester, start_index::Int = 1)::Int
+function next_supertype(
+    @nospecialize(t::Type), stt::FirstSupertypeTester, start_index::Int = 1)::Int
     key::SupertypeTesterKey = SupertypeTesterKey(t, start_index)
     age0::UInt = stt.cache.age
     r::Int = get(stt.cache, key, -1) # avoid locking or allocating a lambda in normal cases
