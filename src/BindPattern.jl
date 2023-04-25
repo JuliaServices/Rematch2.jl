@@ -69,7 +69,7 @@ function bind_pattern!(
 
     elseif @capture(source, varsymbol_Symbol)
         # variable pattern (just a symbol)
-        if varsymbol in keys(assigned)
+        if haskey(assigned, varsymbol)
             # previously introduced variable.  Get the symbol holding its value
             var_value = assigned[varsymbol]
             pattern = EqualValueBoundPattern(
