@@ -48,7 +48,6 @@ function bind_pattern!(
     input::Symbol,
     state::BinderState,
     assigned::ImmutableDict{Symbol,Symbol})
-    @assert !occursin("/src/", string(location.file))
 
     if (source == :_)
         # wildcard pattern

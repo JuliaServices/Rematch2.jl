@@ -42,25 +42,31 @@ julia> f([1,2,3,4])
 (:at_least_2, 1, [2, 3], 4)
 
 julia> f([1])
-ERROR: Rematch2.MatchFailure([1])
+ERROR: MatchFailure([1])
 Stacktrace:
- [1] macro expansion at /home/jamie/.julia/v0.6/Rematch2/src/Rematch2.jl:173 [inlined]
- [2] f(::Array{Int64,1}) at ./REPL[3]:1
+ [1] f(x::Vector{Int64})
+   @ Main ./REPL[6]:5
+ [2] top-level scope
+   @ REPL[11]:1
 
 julia> f(Foo(2, "foo"))
 :foo
 
 julia> f(Foo(0, "foo"))
-ERROR: Rematch2.MatchFailure(Foo(0, "foo"))
+ERROR: MatchFailure(Foo(0, "foo"))
 Stacktrace:
- [1] macro expansion at /home/jamie/.julia/v0.6/Rematch2/src/Rematch2.jl:173 [inlined]
- [2] f(::Foo) at ./REPL[13]:1
+ [1] f(x::Foo)
+   @ Main ./REPL[6]:5
+ [2] top-level scope
+   @ REPL[13]:1
 
 julia> f(Foo(2, "not a foo"))
-ERROR: Rematch2.MatchFailure(Foo(2, "not a foo"))
+ERROR: MatchFailure(Foo(2, "not a foo"))
 Stacktrace:
- [1] macro expansion at /home/jamie/.julia/v0.6/Rematch2/src/Rematch2.jl:173 [inlined]
- [2] f(::Foo) at ./REPL[13]:1
+ [1] f(x::Foo)
+   @ Main ./REPL[6]:5
+ [2] top-level scope
+   @ REPL[14]:1
 ```
 
 ## Usage

@@ -17,7 +17,7 @@ struct FirstSupertypeTester
     lock::ReentrantLock
     cache::Dict{SupertypeTesterKey, Int}
     function FirstSupertypeTester(types::Vector{Type})
-        types = Type[types...] # defensive copy into Vector{Type}
+        types = copy(types) # defensive copy into Vector{Type}
         cache = Dict{SupertypeTesterKey, Int}()
         result = new(types, ReentrantLock(), cache)
         n::Int = length(types)

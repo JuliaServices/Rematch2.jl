@@ -2,7 +2,6 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     @capture(expr, pattern_ = value_) ||
         error("Unrecognized match syntax: $expr")
     input_variable::Symbol = gensym("input_value")
-    @assert !occursin("/src/", string(location.file))
     (bound_pattern::BoundPattern, assigned::Dict{Symbol, Symbol}, state::BinderState) =
         bind_pattern(mod, location, pattern, input_variable)
 

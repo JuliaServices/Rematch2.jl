@@ -4,19 +4,6 @@ struct MatchCaseResult
     result_expression::Any
 end
 
-function bind_pattern(
-    mod::Module,
-    location::LineNumberNode,
-    pattern::Any,
-    input_variable::Symbol)
-    state = BinderState(mod)
-    assigned = ImmutableDict{Symbol,Symbol}()
-
-    (pattern, assigned) = bind_pattern!(
-        location, pattern, input_variable, state, assigned)
-    (pattern, assigned, state)
-end
-
 function handle_match_case(
     location::LineNumberNode,
     input_variable::Symbol,
