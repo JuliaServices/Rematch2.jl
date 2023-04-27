@@ -125,7 +125,9 @@ Repeated variables only match if they are equal (`==`). For example `(x,x)` matc
 
 ## Differences from [Match.jl](https://github.com/kmsquire/Match.jl)
 
-This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/Rematch.jl), which was branched from the original [Match.jl](https://github.com/kmsquire/Match.jl). It now differs in several ways:
+This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/Rematch.jl), which was branched from the original [Match.jl](https://github.com/kmsquire/Match.jl).
+
+`Rematch` differs from `Match` in the following ways:
 
 * If no branches are matched, throws `MatchFailure` instead of returning nothing.
 * Matching against a struct with the wrong number of fields produces an error instead of silently failing.
@@ -133,7 +135,11 @@ This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/
 * The syntax for guards is `x where x > 1` instead of `x, if x > 1 end` and can occur anywhere in a pattern.
 * Structs can be matched by field-names, allowing partial matches: `@match Foo(1,2) begin Foo(y=2) => :ok end` returns `:ok`.
 * Patterns support interpolation, ie `let x=1; @match ($x,$(x+1)) = (1,2); end` is a match.
-* Previously bound variables may be used in interpolations, ie `@match (x, $(x+2)) = (1, 3)` is a match.
-* A pure type match (without another pattern) can be written as `::Type`.
 * No support (yet) for matching `Regex` or `UnitRange`.
 * No support (yet) for matching against multidimensional arrays - all array patterns use linear indexing.
+
+`Rematch2` differs from `Rematch` in the following ways:
+
+* Previously bound variables may be used in interpolations, ie `@match (x, $(x+2)) = (1, 3)` is a match.
+* A pure type match (without another pattern) can be written as `::Type`.
+* Types appearing in type patterns (`::Type`) and struct patterns (`Type(...)`) are bound at macro-expansion time in the context of the module containing the macro usage.  As a consequence, you cannot use certain type expressions that would differ.  For example, you cannot use a type parameter or a local variable containing a type.  The generated code checks that the type is the same at evaluation time as it was at macro expansion time, and an error is thrown if they differ.  If this rare incompatibility affects you, you can use `x where x isa Type` as a workaround.
