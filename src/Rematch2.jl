@@ -2,8 +2,7 @@ module Rematch2
 
 export @match, MatchFailure
 
-import MacroTools
-import MacroTools: @capture
+using MacroTools: MacroTools, @capture
 using Base: ImmutableDict
 
 struct MatchFailure <: Exception
