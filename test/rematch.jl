@@ -25,7 +25,7 @@ end
 end
 
 macro where_thrown(index)
-    :(stacktrace(last((VERSION >= v"1.7" ? current_exceptions : Base.catch_stack)(;backtrace=true))[2])[$index])
+    :(stacktrace(last((VERSION >= v"1.7" ? current_exceptions : Base.catch_stack)())[2])[$index])
 end
 macro curfile()
     QuoteNode(__source__.file)
