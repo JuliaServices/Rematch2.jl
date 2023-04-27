@@ -1,13 +1,14 @@
 function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     @capture(expr, pattern_ = value_) ||
-        error("Unrecognized match syntax: $expr")
+        return :(error($(string("Unrecognized @match syntax: ", expr))))
+
     input_variable::Symbol = gensym("input_value")
     (bound_pattern::BoundPattern, assigned::Dict{Symbol, Symbol}, state::BinderState) =
         bind_pattern(mod, location, pattern, input_variable)
 
     if !isempty(state.errors)
-        errors = join(state.errors, "\n")
-        return :(error($errors))
+        errors = join(map(e -> e.second, state.errors), "\n")
+        return Expr(:block, state.errors[1].first, :(error($errors)))
     end
 
     matched = lower_pattern(bound_pattern, state)

@@ -24,6 +24,218 @@ end
     end
 end
 
+macro where_thrown(index)
+    :(stacktrace(last((VERSION >= v"1.7" ? current_exceptions : Base.catch_stack)(;backtrace=true))[2])[$index])
+end
+macro curfile()
+    QuoteNode(__source__.file)
+end
+file = @curfile
+
+@testset "diagnostics produced are excellent" begin
+
+    @testset "stack trace for MatchFailure" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 1
+                @match ::String = :test1
+                @test false
+            catch e
+                @test e isa MatchFailure
+                @test e.value == :test1
+                top = @where_thrown 1
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "could not bind a type" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    ::Unknown => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Could not bind `Unknown` as a type (due to `UndefVarError(:Unknown)`)."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "attempt to match non-type" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    ::1 => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Attempted to match non-type `1` as a type."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "location of error for redundant field patterns 1" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    Foo(x = x1,x = x2) => (x1, x2)
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Pattern `Foo(x = x1, x = x2)` has duplicate named arguments ([:x, :x])."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "location of error for redundant field patterns 2" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    Foo(x = x1, x = x2) => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Pattern `Foo(x = x1, x = x2)` has duplicate named arguments ([:x, :x])."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "mix positional and named field patterns" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    Foo(x = x1, x2) => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Pattern `Foo(x = x1, x2)` mixes named and positional arguments."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "wrong field count" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match Foo(1, 2) begin
+                    Foo(x, y, z) => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Pattern field count is 3 expected 2."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "multiple splats" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match [1, 2, 3] begin
+                    [x..., y, z...] => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: More than one `...` in pattern `[x..., y, z...]`."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "unrecognized pattern syntax" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @match 1 begin
+                    (x + y) => 1
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Unregognized pattern syntax `x + y`."
+                top = @where_thrown 2
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "type binding changed" begin
+        let line = 0
+            try
+                local String = Int64
+                line = (@__LINE__) + 2
+                @match 1 begin
+                    ::String => 1
+                end
+                @test false
+            catch e
+                @test e isa AssertionError
+                @test e.msg == "$file:$line: The type syntax `::String` bound to type String at macro expansion time but Int64 later."
+                top = @where_thrown 1
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+    @testset "type binding changed" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 3
+                function f(x::String) where { String }
+                    @match x begin
+                        ::String => 1
+                    end
+                end
+                f(Int64(1))
+                @test false
+            catch e
+                @test e isa AssertionError
+                @test e.msg == "$file:$line: The type syntax `::String` bound to type String at macro expansion time but Int64 later."
+                top = @where_thrown 1
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
+
+end
+
 @testset "Nested patterns" begin
     e = Foo(1, 2)
     @match e begin
@@ -51,6 +263,8 @@ end
         end
     end
 end
+
+# Tests inherited from Rematch below
 
 @testset "Match Struct by field names" begin
     # match one struct field by name

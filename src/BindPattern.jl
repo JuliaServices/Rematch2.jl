@@ -11,7 +11,10 @@ struct BinderState
     assignments::Dict{FetchPattern,Symbol}
 
     # Errors found while binding.  Will be reported when executing the matching construct
-    errors::Vector{String}
+    errors::Vector{Pair{LineNumberNode, String}}
+
+    # The set of type syntax forms that have asserted bindings in assertions
+    asserted_types::Vector{Any}
 
     # Assertions that should be executed at runtime before the matching code.
     assertions::Vector{Any}
@@ -20,6 +23,7 @@ struct BinderState
         new(
             mod,
             Dict{FetchPattern,Symbol}(),
+            Vector{Pair{LineNumberNode, String}}(),
             Vector{String}(),
             Vector{Any}()
             )
@@ -86,13 +90,13 @@ function bind_pattern!(
         try
             bound_type = Core.eval(state.mod, Expr(:block, location, T))
         catch ex
-            push!(state.errors,
+            push!(state.errors, location =>
                 "$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
             return (FalseBoundPattern(location, source), assigned)
         end
 
         if !(bound_type isa Type)
-            push!(state.errors,
+            push!(state.errors, location =>
                 "$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
             return (FalseBoundPattern(location, source), assigned)
         end
@@ -109,11 +113,11 @@ function bind_pattern!(
         named_fields = [pat.args[1] for pat in subpatterns if (pat isa Expr) && pat.head == :kw]
         named_count = length(named_fields)
         if named_count != length(unique(named_fields))
-            push!(state.errors,
+            push!(state.errors, location =>
                 "$(location.file):$(location.line): Pattern `$source` has duplicate named arguments ($named_fields).")
             return (FalseBoundPattern(location, source), assigned)
         elseif named_count != 0 && named_count != len
-            push!(state.errors,
+            push!(state.errors, location =>
                 "$(location.file):$(location.line): Pattern `$source` mixes named and positional arguments.")
             return (FalseBoundPattern(location, source), assigned)
         end
@@ -133,8 +137,8 @@ function bind_pattern!(
         if match_positionally
             fieldcount = length(field_names)
             if fieldcount != len
-                push!(state.errors,
-                    "$(location.file):$(location.line): Pattern field count is $len expected $fieldcount")
+                push!(state.errors, location =>
+                    "$(location.file):$(location.line): Pattern field count is $len expected $fieldcount.")
                 return (FalseBoundPattern(location, source), assigned)
             end
         end
@@ -201,7 +205,7 @@ function bind_pattern!(
         # array or tuple
         splat_count = count(s -> s isa Expr && s.head == :..., subpatterns)
         if splat_count > 1
-            push!(state.errors,
+            push!(state.errors, location =>
                 "$(location.file):$(location.line): More than one `...` in pattern `$source`.")
             return (FalseBoundPattern(location, source), assigned)
         end
@@ -209,9 +213,7 @@ function bind_pattern!(
         # produce a check that the input is an array (or tuple)
         patterns = BoundPattern[]
         base = (source.head == :vect) ? AbstractArray : Tuple
-        (pattern0, assigned) = bind_pattern!(
-            location, :(::($base)), input, state, assigned)
-        isempty(state.errors) || return (FalseBoundPattern(location, source), assigned)
+        pattern0 = TypeBoundPattern(location, base, input, base)
         push!(patterns, pattern0)
         len = length(subpatterns)
 
@@ -266,7 +268,7 @@ function bind_pattern!(
         pattern = AndBoundPattern(location, source, [pattern0, pattern1])
 
     else
-        push!(state.errors,
+        push!(state.errors, location =>
             "$(location.file):$(location.line): Unregognized pattern syntax `$source`.")
         return (FalseBoundPattern(location, source), assigned)
     end

@@ -139,11 +139,6 @@ struct AndBoundPattern <: BoundPattern
     end
 end
 
-# Patterns which fetch intermediate values so they may be reused later without
-# being recomputed.  Each one has the side-effect of assigning a computed
-# value to a temporary variable.
-# abstract type Fetch <: BoundPattern
-
 # Fetch a field of the input into into a fresh temporary synthetic variable.
 # Used to decompose patterns that match subfields.  Treated as always "true"
 # for matching purposes, except it has the side effect of producing a temporary
@@ -220,6 +215,9 @@ function Base.:(==)(a::FetchBindingBoundPattern, b::FetchBindingBoundPattern)
     a.input == b.input && a.variable == b.variable
 end
 
+# Patterns which fetch intermediate values so they may be reused later without
+# being recomputed.  Each one has the side-effect of assigning a computed
+# value to a temporary variable.
 const FetchPattern = Union{
     FetchFieldBoundPattern,
     FetchLengthBoundPattern,

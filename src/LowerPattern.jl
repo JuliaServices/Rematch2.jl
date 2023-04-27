@@ -31,15 +31,19 @@ function lower_pattern_to_boolean(
     end
 end
 
-function assertion(requirement, state::BinderState)
-    push!(state.assertions,
-        :($(esc(requirement)) || throw(AssertionError($(string(requirement))))))
-end
-
 function lower_pattern_to_boolean(
     bound_pattern::TypeBoundPattern,
     state::BinderState)
-    assertion(:($(bound_pattern.type) == $(bound_pattern.source)), state)
+    if bound_pattern.source != bound_pattern.type && !(bound_pattern.source in state.asserted_types)
+        test = :($(esc(:($(bound_pattern.type) == $(bound_pattern.source)))))
+        thrown = :(throw(AssertionError(string($(string(bound_pattern.location.file)),
+            ":", $(bound_pattern.location.line),
+            ": The type syntax `::", $(string(bound_pattern.source)), "` bound to type ",
+            string($(bound_pattern.type)), " at macro expansion time but ",
+             $(esc(bound_pattern.source)), " later."))))
+        push!(state.assertions, Expr(:block, bound_pattern.location, :($test || $thrown)))
+        push!(state.asserted_types, bound_pattern.source)
+    end
     :($(bound_pattern.input) isa $(bound_pattern.type))
 end
 
