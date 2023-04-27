@@ -3,7 +3,7 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
         return :(error($(string("Unrecognized @match syntax: ", expr))))
 
     input_variable::Symbol = gensym("input_value")
-    (bound_pattern::BoundPattern, assigned::Dict{Symbol, Symbol}, state::BinderState) =
+    (bound_pattern::BoundPattern, assigned::ImmutableDict{Symbol, Symbol}, state::BinderState) =
         bind_pattern(mod, location, pattern, input_variable)
 
     if !isempty(state.errors)
@@ -23,7 +23,7 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
         :($matched || throw(MatchFailure($input_variable))),
 
         # assign to pattern variables.
-        (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in assigned)...,
+        assignments(assigned)...,
 
         # finally, yield the input that was matched
         input_variable)

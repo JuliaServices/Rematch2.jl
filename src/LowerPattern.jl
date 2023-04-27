@@ -21,13 +21,14 @@ end
 function lower_pattern_to_boolean(
     bound_pattern::EqualValueBoundPattern,
     ::BinderState)
+    value = bound_pattern.value
+    needs_let = value isa Expr || value isa Symbol && !(contains("#", string(value)))
     eval = :(isequal($(bound_pattern.input), $(bound_pattern.value)))
-    if isempty(bound_pattern.assigned)
-        eval
+    if needs_let
+        block = Expr(:block, bound_pattern.location, eval)
+        Expr(:let, Expr(:block, assignments(bound_pattern.assigned)...), block)
     else
-        # assign to pattern variables
-        patassigns = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in bound_pattern.assigned)
-        Expr(:let, Expr(:block, patassigns...), Expr(:block, bound_pattern.location, eval))
+        eval
     end
 end
 
@@ -113,14 +114,17 @@ function lower_pattern_to_boolean(
     fetch_pattern(:($(tempvar) = $(bound_pattern.input)))
 end
 
+function assignments(assigned::ImmutableDict{Symbol, Symbol})
+    # produce a list of assignments to be splatted into the caller
+    a = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in assigned)
+end
+
 function lower_pattern_to_boolean(
     bound_pattern::WhereBoundPattern,
     state::BinderState)
-    assigned = bound_pattern.assigned
-    # assign to pattern variables
-    patassigns = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in assigned)
     eval = esc(bound_pattern.source)
-    Expr(:let, Expr(:block, patassigns...), Expr(:block, bound_pattern.location, eval))
+    block = Expr(:block, bound_pattern.location, eval)
+    Expr(:let, Expr(:block, assignments(bound_pattern.assigned)...), block)
 end
 
 function lower_pattern(

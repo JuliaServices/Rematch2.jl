@@ -1,5 +1,6 @@
 struct MatchCaseResult
-    assigned::Dict{Symbol, Symbol}
+    location::LineNumberNode
+    assigned::ImmutableDict{Symbol, Symbol}
     matched_expression::Any
     result_expression::Any
 end
@@ -18,10 +19,10 @@ function handle_match_case(
         locstring = string(location.file, ":", location.line)
         matchstring = string(case)
         message = "$locstring: Unrecognized @match case syntax: `$matchstring`"
-        return MatchCaseResult(assigned, :(error($message)), nothing)
+        return MatchCaseResult(location, assigned, :(error($message)), nothing)
     end
 
-    return MatchCaseResult(assigned, matched, result)
+    return MatchCaseResult(location, assigned, matched, result)
 end
 
 function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
@@ -53,11 +54,8 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
     tail = :(throw(MatchFailure($input_variable)))
     n = length(cases)
     for (i, case) in enumerate(reverse(cases))
-        assigned = case.assigned
-        # assign to pattern variables
-        patassigns = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in case.assigned)
-        eval = esc(case.result_expression)
-        result = Expr(:let, Expr(:block, patassigns...), eval)
+        eval = Expr(:block, case.location, esc(case.result_expression))
+        result = Expr(:let, Expr(:block, assignments(case.assigned)...), eval)
         tail = Expr(i == n ? :if : :elseif, case.matched_expression, result, tail)
     end
     Expr(:block, state.assertions..., :($input_variable = $(esc(value))), tail)
