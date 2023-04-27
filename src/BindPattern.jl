@@ -1,6 +1,8 @@
 
 # Persistent data that we use across different patterns, to ensure the same computations
-# are always represented by the same synthetic variables.
+# are always represented by the same synthetic variables.  We use this during lowering
+# and also during code generation, since it holds some of the state required during code
+# generation (such as assertions and assignments)
 struct BinderState
     # The module containing the pattern, in which types appearing in the
     # pattern should be bound.
@@ -8,7 +10,7 @@ struct BinderState
 
     # The bindings to be used for each intermediate computations.  This maps from the
     # computation producing the value to the symbol for the temp holding that value.
-    assignments::Dict{FetchPattern,Symbol}
+    assignments::Dict{FetchBoundPattern,Symbol}
 
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
@@ -19,7 +21,7 @@ struct BinderState
     function BinderState(mod::Module)
         new(
             mod,
-            Dict{FetchPattern,Symbol}(),
+            Dict{FetchBoundPattern,Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Any}()
             )
@@ -27,12 +29,16 @@ struct BinderState
 end
 
 const saved_prefix = "saved#"
-function get_temp(state::BinderState, p::FetchPattern)
+function get_temp(state::BinderState, p::FetchBoundPattern)
     get!(state.assignments, p) do; gensym(); end
 end
 get_temp(state::BinderState, p::FetchBindingBoundPattern) = get_temp(p.variable)
 get_temp(p::Symbol) = Symbol(saved_prefix, p)
 
+# We restrict the struct pattern to require something that looks like
+# a type name before the open paren.  This improves the diagnostics
+# for error cases like `(a + b)`, which produces an analogous Expr node
+# but with `+` as the operator.
 is_possible_type_name(t) = false
 is_possible_type_name(t::Symbol) = Base.isidentifier(t)
 function is_possible_type_name(t::Expr)

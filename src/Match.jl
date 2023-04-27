@@ -1,12 +1,12 @@
 function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     @capture(expr, pattern_ = value_) ||
-        return :(error($(string("Unrecognized @match syntax: ", expr))))
+        error(string("Unrecognized @match syntax: ", expr))
 
     input_variable::Symbol = gensym("input_value")
     (bound_pattern::BoundPattern, assigned::ImmutableDict{Symbol, Symbol}, state::BinderState) =
         bind_pattern(mod, location, pattern, input_variable)
 
-    matched = lower_pattern(bound_pattern, state)
+    matched = lower_pattern_to_boolean(bound_pattern, state)
     Expr(:block,
         # evaluate the assertions
         state.assertions...,

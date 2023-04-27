@@ -227,6 +227,38 @@ file = @_curfile
         end
     end
 
+    @testset "bad match block syntax" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 1
+                @eval @match a (b + c)
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Unrecognized @match block syntax: `b + c`."
+            end
+        end
+    end
+
+    @testset "bad match case syntax" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match 1 begin
+                    (2 + 2) = 4
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test startswith(e.msg, "$file:$line: Unrecognized @match case syntax: `2 + 2 =")
+            end
+        end
+    end
+
 end
 
 @testset "Nested patterns" begin

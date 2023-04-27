@@ -1,26 +1,17 @@
 
-# Returns an expression that computes whether or not the pattern matches.
-function lower_pattern_to_boolean(
-    bound_pattern::BoundPattern,
-    ::BinderState)
-    error("lower_pattern_to_boolean not implemented for $(typeof(bound_pattern)))")
+function assignments(assigned::ImmutableDict{Symbol, Symbol})
+    # produce a list of assignments to be splatted into the caller
+    a = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in assigned)
 end
 
-function lower_pattern_to_boolean(
-    bound_pattern::TrueBoundPattern,
-    ::BinderState)
-    true
+# return the code needed for a pattern.
+function code(bound_pattern::BoundPattern, state::BinderState)
+    location = bound_pattern.location
+    error("$(location.file):$(location.line): `code` not implemented for `$(typeof(bound_pattern))`.")
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::FalseBoundPattern,
-    ::BinderState)
-    false
-end
-
-function lower_pattern_to_boolean(
-    bound_pattern::EqualValueBoundPattern,
-    ::BinderState)
+code(bound_pattern::TrueBoundPattern, state::BinderState) = true
+code(bound_pattern::FalseBoundPattern, state::BinderState) = false
+function code(bound_pattern::EqualValueBoundPattern, state::BinderState)
     value = bound_pattern.value
     needs_let = value isa Expr || value isa Symbol && !(contains("#", string(value)))
     eval = :(isequal($(bound_pattern.input), $(bound_pattern.value)))
@@ -31,10 +22,18 @@ function lower_pattern_to_boolean(
         eval
     end
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::TypeBoundPattern,
-    state::BinderState)
+function code(bound_pattern::RelationalBoundPattern, state::BinderState)
+    @assert bound_pattern.relation == :>=
+    :($(bound_pattern.relation)($(bound_pattern.input), $(esc(bound_pattern.value))))
+end
+function code(bound_pattern::WhereBoundPattern, state::BinderState)
+    eval = esc(bound_pattern.source)
+    block = Expr(:block, bound_pattern.location, eval)
+    Expr(:let, Expr(:block, assignments(bound_pattern.assigned)...), block)
+end
+function code(bound_pattern::TypeBoundPattern, state::BinderState)
+    # We assert that the type is invariant.  Because this mutates state.assertions,
+    # you must take the value of state.assertions after all calls to code.
     if bound_pattern.source != bound_pattern.type && !(bound_pattern.source in state.asserted_types)
         test = :($(esc(:($(bound_pattern.type) == $(bound_pattern.source)))))
         thrown = :(throw(AssertionError(string($(string(bound_pattern.location.file)),
@@ -47,88 +46,56 @@ function lower_pattern_to_boolean(
     end
     :($(bound_pattern.input) isa $(bound_pattern.type))
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::AndBoundPattern,
-    state::BinderState)
-    :($(mapreduce(bp -> lower_pattern(bp, state),
-            (a, b) -> :($a && $b),
-            bound_pattern.subpatterns)))
-end
-
-function lower_pattern_to_boolean(
-    bound_pattern::OrBoundPattern,
-    state::BinderState)
-    :($(mapreduce(bp -> lower_pattern(bp, state),
+function code(bound_pattern::OrBoundPattern, state::BinderState)
+    :($(mapreduce(bp -> lower_pattern_to_boolean(bp, state),
             (a, b) -> :($a || $b),
             bound_pattern.subpatterns)))
 end
-
-function fetch_pattern(x::Expr)
-    Expr(:block, x, true)
+function code(bound_pattern::AndBoundPattern, state::BinderState)
+    :($(mapreduce(bp -> lower_pattern_to_boolean(bp, state),
+            (a, b) -> :($a && $b),
+            bound_pattern.subpatterns)))
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::FetchFieldBoundPattern,
-    state::BinderState)
+function code(bound_pattern::FetchFieldBoundPattern, state::BinderState)
     tempvar = state.assignments[bound_pattern]
     index = QuoteNode(bound_pattern.field_name)
-    fetch_pattern(:($tempvar = getfield($(bound_pattern.input), $index)))
+    :($tempvar = getfield($(bound_pattern.input), $index))
 end
-
-function lower_pattern_to_boolean(
+function code(
     bound_pattern::FetchIndexBoundPattern,
     state::BinderState)
     tempvar = state.assignments[bound_pattern]
     i = bound_pattern.index
     if i < 0; i = :(length($(bound_pattern.input)) + $(i + 1)); end
-    fetch_pattern(:($tempvar = getindex($(bound_pattern.input), $i)))
+    :($tempvar = getindex($(bound_pattern.input), $i))
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::FetchLengthBoundPattern,
-    state::BinderState)
-    tempvar = state.assignments[bound_pattern]
-    fetch_pattern(:($tempvar = length($(bound_pattern.input))))
-end
-
-function lower_pattern_to_boolean(
-    bound_pattern::RelationalBoundPattern,
-    state::BinderState)
-    @assert bound_pattern.relation == :>=
-    :($(bound_pattern.relation)($(bound_pattern.input), $(esc(bound_pattern.value))))
-end
-
-function lower_pattern_to_boolean(
-    bound_pattern::FetchRangeBoundPattern,
-    state::BinderState)
+function code(bound_pattern::FetchRangeBoundPattern, state::BinderState)
     tempvar = state.assignments[bound_pattern]
     index = :($(bound_pattern.first_index):(length($(bound_pattern.input)) - $(bound_pattern.from_end)))
-    fetch_pattern(:($(tempvar) = getindex($(bound_pattern.input), $(index))))
+    :($(tempvar) = getindex($(bound_pattern.input), $(index)))
 end
-
-function lower_pattern_to_boolean(
-    bound_pattern::FetchBindingBoundPattern,
-    state::BinderState)
+function code(bound_pattern::FetchLengthBoundPattern, state::BinderState)
+    tempvar = state.assignments[bound_pattern]
+    :($tempvar = length($(bound_pattern.input)))
+end
+function code(bound_pattern::FetchBindingBoundPattern, state::BinderState)
     tempvar = get_temp(bound_pattern.variable)
-    fetch_pattern(:($(tempvar) = $(bound_pattern.input)))
+    :($(tempvar) = $(bound_pattern.input))
 end
 
-function assignments(assigned::ImmutableDict{Symbol, Symbol})
-    # produce a list of assignments to be splatted into the caller
-    a = (:($(esc(patvar)) = $resultsym) for (patvar, resultsym) in assigned)
+# Return an expression that computes whether or not the pattern matches.
+function lower_pattern_to_boolean(bound_pattern::BoundPattern, state::BinderState)
+    Expr(:block, bound_pattern.location, code(bound_pattern, state))
 end
-
 function lower_pattern_to_boolean(
-    bound_pattern::WhereBoundPattern,
+    bound_pattern::Union{AndBoundPattern, OrBoundPattern, EqualValueBoundPattern},
     state::BinderState)
-    eval = esc(bound_pattern.source)
-    block = Expr(:block, bound_pattern.location, eval)
-    Expr(:let, Expr(:block, assignments(bound_pattern.assigned)...), block)
+    code(bound_pattern, state)
 end
-
-function lower_pattern(
-    bound_pattern::BoundPattern,
-    state::BinderState)
-    Expr(:block, bound_pattern.location, lower_pattern_to_boolean(bound_pattern, state))
+function lower_pattern_to_boolean(bound_pattern::FetchBoundPattern, state::BinderState)
+    # since fetches are performed purely for their side-effects, and
+    # joined to the computations that require the fetched value using `and`,
+    # we return `true` as the boolean value whenever we perform one.
+    # (Fetches always succeed)
+    Expr(:block, bound_pattern.location, code(bound_pattern, state), true)
 end

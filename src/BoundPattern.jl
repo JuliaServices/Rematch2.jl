@@ -1,8 +1,14 @@
 
-# We have a node for each pattern form.  Some syntactic pattern forms are test_broken
+# We have a node for each pattern form.  Some syntactic pattern forms are broken
 # up into more primitive forms.  For example, the pattern `s::String` is represented as
-# an `AndPattern` that combines a `TypePattern` with a `BindVariablePattern`.
+# an `AndPattern` that combines a `TypePattern` (for String) with a
+# `BindVariablePattern` (to bind s).
 abstract type BoundPattern end
+
+# Patterns which fetch intermediate values so they may be reused later without
+# being recomputed.  Each one has the side-effect of assigning a computed
+# value to a temporary variable.
+abstract type FetchBoundPattern <: BoundPattern end
 
 # A pattern that always matches
 struct TrueBoundPattern <: BoundPattern
@@ -144,13 +150,12 @@ end
 # for matching purposes, except it has the side effect of producing a temporary
 # variable that can be used for further tests.  That temporary may be reused across
 # patterns when that makes sense.
-struct FetchFieldBoundPattern <: BoundPattern
+struct FetchFieldBoundPattern <: FetchBoundPattern
     location::LineNumberNode
     source::Any
     input::Symbol
     field_name::Symbol
 end
-
 # For the purposes of whether or not two fetches are the same: if they are fetching
 # the same field name (from the same input), then yes.
 Base.hash(a::FetchFieldBoundPattern, h::UInt64) =
@@ -162,11 +167,12 @@ end
 # Fetch a value at a given index of the input into a temporary.  See `FetchFieldBoundPattern`
 # for the general idea of how these are used.  Negative indices index from the end of
 # the input; `index==-1` accesses the last element.
-struct FetchIndexBoundPattern <: BoundPattern
+struct FetchIndexBoundPattern <: FetchBoundPattern
     location::LineNumberNode
     source::Any
     input::Symbol
-    index::Int   # index value.  If negative, it is from the end.  `-1` accesses the last element
+    # index value.  If negative, it is from the end.  `-1` accesses the last element
+    index::Int
 end
 Base.hash(a::FetchIndexBoundPattern, h::UInt64) =
     hash((a.input, a.index, 0x820a6d07cc13ac86), h)
@@ -175,7 +181,7 @@ function Base.:(==)(a::FetchIndexBoundPattern, b::FetchIndexBoundPattern)
 end
 
 # Fetch a subsequence at a given range of the input into a temporary.
-struct FetchRangeBoundPattern <: BoundPattern
+struct FetchRangeBoundPattern <: FetchBoundPattern
     location::LineNumberNode
     source::Any
     input::Symbol
@@ -189,7 +195,7 @@ function Base.:(==)(a::FetchRangeBoundPattern, b::FetchRangeBoundPattern)
 end
 
 # Compute the length of the input (tuple or array)
-struct FetchLengthBoundPattern <: BoundPattern
+struct FetchLengthBoundPattern <: FetchBoundPattern
     location::LineNumberNode
     source::Any
     input::Symbol
@@ -203,7 +209,7 @@ end
 # Preserve the current binding of the user variable into a fixed variable-specific temp.
 # Used to force the binding on both sides of an or-pattern to be the same.  The temp used
 # for this depends only on the variable.
-struct FetchBindingBoundPattern <: BoundPattern
+struct FetchBindingBoundPattern <: FetchBoundPattern
     location::LineNumberNode
     source::Any
     input::Symbol    # previous binding of the variable
@@ -214,13 +220,3 @@ Base.hash(a::FetchBindingBoundPattern, h::UInt64) =
 function Base.:(==)(a::FetchBindingBoundPattern, b::FetchBindingBoundPattern)
     a.input == b.input && a.variable == b.variable
 end
-
-# Patterns which fetch intermediate values so they may be reused later without
-# being recomputed.  Each one has the side-effect of assigning a computed
-# value to a temporary variable.
-const FetchPattern = Union{
-    FetchFieldBoundPattern,
-    FetchLengthBoundPattern,
-    FetchIndexBoundPattern,
-    FetchRangeBoundPattern,
-    FetchBindingBoundPattern}

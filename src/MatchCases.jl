@@ -14,12 +14,9 @@ function handle_match_case(
     if @capture(case, pattern_ => result_)
         (bound_pattern, assigned) = bind_pattern!(
             location, pattern, input_variable, state, assigned)
-        matched = lower_pattern(bound_pattern, state)
+        matched = lower_pattern_to_boolean(bound_pattern, state)
     else
-        locstring = string(location.file, ":", location.line)
-        matchstring = string(case)
-        message = "$locstring: Unrecognized @match case syntax: `$matchstring`"
-        return MatchCaseResult(location, assigned, :(error($message)), nothing)
+        error("$(location.file):$(location.line): Unrecognized @match case syntax: `$case`.")
     end
 
     return MatchCaseResult(location, assigned, matched, result)
@@ -30,10 +27,7 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
         # previous version of @match supports `@match(expr, pattern => value)`
         match = Expr(:block, match)
     elseif !(match isa Expr) || match.head != :block
-        locstring = string(location.file, ":", location.line)
-        matchstring = string(match)
-        message = "$locstring: Unrecognized @match block syntax: `$matchstring`"
-        return :(error($message))
+        error("$(location.file):$(location.line): Unrecognized @match block syntax: `$match`.")
     end
     state = BinderState(mod)
     input_variable::Symbol = gensym("input_value")
