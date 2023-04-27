@@ -37,10 +37,12 @@ struct EqualValueBoundPattern <: BoundPattern
     value::Any  # the value that the input should be compared to using `isequal`
     assigned::ImmutableDict{Symbol,Symbol}
 end
-Base.hash(a::EqualValueBoundPattern, h::UInt64) =
+function Base.hash(a::EqualValueBoundPattern, h::UInt64)
     hash((a.input, a.value, a.assigned, 0x7e92a644c831493f), h)
-Base.:(==)(a::EqualValueBoundPattern, b::EqualValueBoundPattern) =
-    a.input == b.input && a.value == b.value && a.assigned == b.assigned
+end
+function Base.:(==)(a::EqualValueBoundPattern, b::EqualValueBoundPattern)
+    a === b || a.input == b.input && a.value == b.value && a.assigned == b.assigned
+end
 
 # A pattern that compares the input, which must be an Integer, using a Relational
 # operator, to a given value.  Used to ensure that list patterns match against a
@@ -53,10 +55,12 @@ struct RelationalBoundPattern <: BoundPattern
     relation::Symbol # one of `:<`, `:<=`, `:>`, `:>=`
     value::Int
 end
-Base.hash(a::RelationalBoundPattern, h::UInt64) =
+function Base.hash(a::RelationalBoundPattern, h::UInt64)
     hash((a.input, a.relation, a.value, 0xbfe66949d262f0e0), h)
-Base.:(==)(a::RelationalBoundPattern, b::RelationalBoundPattern) =
-    a.input == b.input && a.relation == b.relation && a.value == b.value
+end
+function Base.:(==)(a::RelationalBoundPattern, b::RelationalBoundPattern)
+    a === b || a.input == b.input && a.relation == b.relation && a.value == b.value
+end
 
 # A pattern that evaluates the given boolean expression given the assignments.
 struct WhereBoundPattern <: BoundPattern
@@ -64,10 +68,12 @@ struct WhereBoundPattern <: BoundPattern
     source::Any
     assigned::ImmutableDict{Symbol,Symbol}
 end
-Base.hash(a::WhereBoundPattern, h::UInt64) =
+function Base.hash(a::WhereBoundPattern, h::UInt64)
     hash((a.source, a.assigned, 0x868a8076acbe0e12), h)
-Base.:(==)(a::WhereBoundPattern, b::WhereBoundPattern) =
-    a.source == b.source && a.assigned == b.assigned
+end
+function Base.:(==)(a::WhereBoundPattern, b::WhereBoundPattern)
+    a === b || a.source == b.source && a.assigned == b.assigned
+end
 
 # A pattern like ::Type which matches if the type matches.
 struct TypeBoundPattern <: BoundPattern
@@ -76,10 +82,12 @@ struct TypeBoundPattern <: BoundPattern
     input::Symbol
     type::Type # typically the type that source binds to
 end
-Base.hash(a::TypeBoundPattern, h::UInt64) =
+function Base.hash(a::TypeBoundPattern, h::UInt64)
     hash((a.input, a.relation, a.value, 0x92b4a01b9f8cb47b), h)
-Base.:(==)(a::TypeBoundPattern, b::TypeBoundPattern) =
-    a.input == b.input && a.type == b.type
+end
+function Base.:(==)(a::TypeBoundPattern, b::TypeBoundPattern)
+    a === b || a.input == b.input && a.type == b.type
+end
 
 # A pattern that matches if any disjunct matches
 struct OrBoundPattern <: BoundPattern
@@ -158,10 +166,11 @@ struct FetchFieldBoundPattern <: FetchBoundPattern
 end
 # For the purposes of whether or not two fetches are the same: if they are fetching
 # the same field name (from the same input), then yes.
-Base.hash(a::FetchFieldBoundPattern, h::UInt64) =
+function Base.hash(a::FetchFieldBoundPattern, h::UInt64)
     hash((a.input, a.field_name, 0x0c5266ab2b5ed7f1), h)
+end
 function Base.:(==)(a::FetchFieldBoundPattern, b::FetchFieldBoundPattern)
-    a.input == b.input && a.field_name == b.field_name
+    a === b || a.input == b.input && a.field_name == b.field_name
 end
 
 # Fetch a value at a given index of the input into a temporary.  See `FetchFieldBoundPattern`
@@ -174,10 +183,11 @@ struct FetchIndexBoundPattern <: FetchBoundPattern
     # index value.  If negative, it is from the end.  `-1` accesses the last element
     index::Int
 end
-Base.hash(a::FetchIndexBoundPattern, h::UInt64) =
+function Base.hash(a::FetchIndexBoundPattern, h::UInt64)
     hash((a.input, a.index, 0x820a6d07cc13ac86), h)
+end
 function Base.:(==)(a::FetchIndexBoundPattern, b::FetchIndexBoundPattern)
-    a.input == b.input && a.index == b.index
+    a === b || a.input == b.input && a.index == b.index
 end
 
 # Fetch a subsequence at a given range of the input into a temporary.
@@ -188,10 +198,11 @@ struct FetchRangeBoundPattern <: FetchBoundPattern
     first_index::Int # first index to include
     from_end::Int    # distance from the end for the last included index; 0 to include the last element
 end
-Base.hash(a::FetchRangeBoundPattern, h::UInt64) =
+function Base.hash(a::FetchRangeBoundPattern, h::UInt64)
     hash((a.input, a.first_index, a.from_end, 0x7aea7756428a1646), h)
+end
 function Base.:(==)(a::FetchRangeBoundPattern, b::FetchRangeBoundPattern)
-    a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
+    a === b || a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
 end
 
 # Compute the length of the input (tuple or array)
@@ -200,10 +211,11 @@ struct FetchLengthBoundPattern <: FetchBoundPattern
     source::Any
     input::Symbol
 end
-Base.hash(a::FetchLengthBoundPattern, h::UInt64) =
+function Base.hash(a::FetchLengthBoundPattern, h::UInt64)
     hash((a.input, 0xa7167fae5a24c457), h)
+end
 function Base.:(==)(a::FetchLengthBoundPattern, b::FetchLengthBoundPattern)
-    a.input == b.input
+    a === b || a.input == b.input
 end
 
 # Preserve the current binding of the user variable into a fixed variable-specific temp.
@@ -215,8 +227,9 @@ struct FetchBindingBoundPattern <: FetchBoundPattern
     input::Symbol    # previous binding of the variable
     variable::Symbol # user variable to be preserved
 end
-Base.hash(a::FetchBindingBoundPattern, h::UInt64) =
+function Base.hash(a::FetchBindingBoundPattern, h::UInt64)
     hash((a.input, a.variable, 0x53f0f6a137a891d8), h)
+end
 function Base.:(==)(a::FetchBindingBoundPattern, b::FetchBindingBoundPattern)
-    a.input == b.input && a.variable == b.variable
+    a === b || a.input == b.input && a.variable == b.variable
 end
