@@ -10,9 +10,6 @@ struct BinderState
     # computation producing the value to the symbol for the temp holding that value.
     assignments::Dict{FetchPattern,Symbol}
 
-    # Errors found while binding.  Will be reported when executing the matching construct
-    errors::Vector{Pair{LineNumberNode, String}}
-
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
 
@@ -24,7 +21,6 @@ struct BinderState
             mod,
             Dict{FetchPattern,Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
-            Vector{String}(),
             Vector{Any}()
             )
     end
@@ -90,15 +86,11 @@ function bind_pattern!(
         try
             bound_type = Core.eval(state.mod, Expr(:block, location, T))
         catch ex
-            push!(state.errors, location =>
-                "$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
-            return (FalseBoundPattern(location, source), assigned)
+            error("$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
         end
 
         if !(bound_type isa Type)
-            push!(state.errors, location =>
-                "$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
-            return (FalseBoundPattern(location, source), assigned)
+            error("$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
         end
         pattern = TypeBoundPattern(location, T, input, bound_type)
 
@@ -113,18 +105,13 @@ function bind_pattern!(
         named_fields = [pat.args[1] for pat in subpatterns if (pat isa Expr) && pat.head == :kw]
         named_count = length(named_fields)
         if named_count != length(unique(named_fields))
-            push!(state.errors, location =>
-                "$(location.file):$(location.line): Pattern `$source` has duplicate named arguments ($named_fields).")
-            return (FalseBoundPattern(location, source), assigned)
+            error("$(location.file):$(location.line): Pattern `$source` has duplicate named arguments $named_fields.")
         elseif named_count != 0 && named_count != len
-            push!(state.errors, location =>
-                "$(location.file):$(location.line): Pattern `$source` mixes named and positional arguments.")
-            return (FalseBoundPattern(location, source), assigned)
+            error("$(location.file):$(location.line): Pattern `$source` mixes named and positional arguments.")
         end
 
         # bind type at macro expansion time
         (pattern0, assigned) = bind_pattern!(location, :(::($T)), input, state, assigned)
-        isempty(state.errors) || return (FalseBoundPattern(location, source), assigned)
         bound_type = (pattern0::TypeBoundPattern).type
         patterns = BoundPattern[pattern0]
 
@@ -137,9 +124,7 @@ function bind_pattern!(
         if match_positionally
             fieldcount = length(field_names)
             if fieldcount != len
-                push!(state.errors, location =>
-                    "$(location.file):$(location.line): Pattern field count is $len expected $fieldcount.")
-                return (FalseBoundPattern(location, source), assigned)
+                error("$(location.file):$(location.line): Pattern field count is $len expected $fieldcount.")
             end
         end
 
@@ -205,9 +190,7 @@ function bind_pattern!(
         # array or tuple
         splat_count = count(s -> s isa Expr && s.head == :..., subpatterns)
         if splat_count > 1
-            push!(state.errors, location =>
-                "$(location.file):$(location.line): More than one `...` in pattern `$source`.")
-            return (FalseBoundPattern(location, source), assigned)
+            error("$(location.file):$(location.line): More than one `...` in pattern `$source`.")
         end
 
         # produce a check that the input is an array (or tuple)
@@ -268,9 +251,7 @@ function bind_pattern!(
         pattern = AndBoundPattern(location, source, [pattern0, pattern1])
 
     else
-        push!(state.errors, location =>
-            "$(location.file):$(location.line): Unregognized pattern syntax `$source`.")
-        return (FalseBoundPattern(location, source), assigned)
+        error("$(location.file):$(location.line): Unregognized pattern syntax `$source`.")
     end
 
     return (pattern, assigned)

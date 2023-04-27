@@ -46,10 +46,6 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
             push!(cases, handle_match_case(location, input_variable, case, state))
         end
     end
-    if !isempty(state.errors)
-        errors = join(map(e -> e.second, state.errors), "\n")
-        return Expr(:block, state.errors[1].first, :(error($errors)))
-    end
 
     tail = :(throw(MatchFailure($input_variable)))
     n = length(cases)

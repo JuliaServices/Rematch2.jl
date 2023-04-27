@@ -6,11 +6,6 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     (bound_pattern::BoundPattern, assigned::ImmutableDict{Symbol, Symbol}, state::BinderState) =
         bind_pattern(mod, location, pattern, input_variable)
 
-    if !isempty(state.errors)
-        errors = join(map(e -> e.second, state.errors), "\n")
-        return Expr(:block, state.errors[1].first, :(error($errors)))
-    end
-
     matched = lower_pattern(bound_pattern, state)
     Expr(:block,
         # evaluate the assertions
