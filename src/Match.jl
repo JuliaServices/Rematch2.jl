@@ -3,8 +3,9 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
         error(string("Unrecognized @match syntax: ", expr))
 
     input_variable::Symbol = gensym("input_value")
-    (bound_pattern::BoundPattern, assigned::ImmutableDict{Symbol, Symbol}, state::BinderState) =
-        bind_pattern(mod, location, pattern, input_variable)
+    state = BinderState(mod, input_variable)
+    (bound_pattern, assigned) = bind_pattern!(
+        location, pattern, input_variable, state, ImmutableDict{Symbol,Symbol}())
 
     matched = lower_pattern_to_boolean(bound_pattern, state)
     Expr(:block,
@@ -53,6 +54,24 @@ If there are no matches, throw `MatchFailure`.
 """
 macro match(value, cases)
     handle_match_cases(__source__, __module__, value, cases)
+end
+
+"""
+Usage:
+```
+    @match2 value begin
+        pattern1 => result1
+        pattern2 => result2
+        ...
+    end
+```
+
+Return `result` for the first matching `pattern`.
+If there are no matches, throw `MatchFailure`.
+This is like @match, but generaties more efficient code.
+"""
+macro match2(value, cases)
+    handle_match2_cases(__source__, __module__, value, cases)
 end
 
 """

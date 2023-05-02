@@ -29,8 +29,9 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
     elseif !(match isa Expr) || match.head != :block
         error("$(location.file):$(location.line): Unrecognized @match block syntax: `$match`.")
     end
-    state = BinderState(mod)
+
     input_variable::Symbol = gensym("input_value")
+    state = BinderState(mod, input_variable)
     cases = MatchCaseResult[]
 
     for case in match.args
