@@ -100,7 +100,8 @@ end
 struct BoundOrPattern <: BoundPattern
     location::LineNumberNode
     source::Any
-    subpatterns::Vector{BoundPattern}
+    subpatterns::ImmutableVector{BoundPattern}
+    _cached_hash::UInt64
     function BoundOrPattern(
         location::LineNumberNode,
         source::Any,
@@ -110,9 +111,9 @@ struct BoundOrPattern <: BoundPattern
             p -> if p isa BoundOrPattern
                 p.subpatterns
             elseif p isa BoundFalsePattern
-                []
+                BoundPattern[]
             else
-                [p]
+                BoundPattern[p]
             end,
             vcat,
             subpatterns)
@@ -123,9 +124,15 @@ struct BoundOrPattern <: BoundPattern
         elseif length(gathered_subpatterns) == 1
             return gathered_subpatterns[1]
         else
-            return new(location, source, gathered_subpatterns)
+            return new(location, source, gathered_subpatterns,
+                hash(subpatterns, 0x82d8dc51bf845b12))
         end
     end
+end
+Base.hash(a::BoundOrPattern, h::UInt64) = hash(a._cached_hash, h)
+Base.hash(a::BoundOrPattern) = a._cached_hash
+function Base.:(==)(a::BoundOrPattern, b::BoundOrPattern)
+    a === b || a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
 
 # A pattern that matches if all conjuncts match
@@ -133,6 +140,7 @@ struct BoundAndPattern <: BoundPattern
     location::LineNumberNode
     source::Any
     subpatterns::Vector{BoundPattern}
+    _cached_hash::UInt64
     function BoundAndPattern(
         location::LineNumberNode,
         source::Any,
@@ -142,9 +150,9 @@ struct BoundAndPattern <: BoundPattern
             p -> if p isa BoundAndPattern
                 p.subpatterns
             elseif p isa BoundTruePattern
-                []
+                BoundPattern[]
             else
-                [p]
+                BoundPattern[p]
             end,
             vcat,
             subpatterns)
@@ -155,9 +163,15 @@ struct BoundAndPattern <: BoundPattern
         elseif length(gathered_subpatterns) == 1
             return gathered_subpatterns[1]
         else
-            return new(location, source, gathered_subpatterns)
+            return new(location, source, gathered_subpatterns,
+                hash(subpatterns, 0x9b7f2a204d994a1a))
         end
     end
+end
+Base.hash(a::BoundAndPattern, h::UInt64) = hash(a._cached_hash, h)
+Base.hash(a::BoundAndPattern) = a._cached_hash
+function Base.:(==)(a::BoundAndPattern, b::BoundAndPattern)
+    a === b || a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
 
 # Fetch a field of the input into into a fresh temporary synthetic variable.

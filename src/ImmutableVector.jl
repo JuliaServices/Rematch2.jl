@@ -4,7 +4,7 @@
 struct ImmutableVector{T} <: AbstractVector{T}
     _data::Vector{T}
     _cached_hash::UInt64
-    ImmutableVector{T}(data::Vector{T}) where {T} = new(copy(data), hash(data))
+    ImmutableVector{T}(data::Vector{T}) where {T} = new(copy(data), hash(data, 0xdc8f7e8a0e698fac))
 end
 ImmutableVector(data::Vector{T}) where {T} = ImmutableVector{T}(data)
 Base.size(a::ImmutableVector) = size(a._data)

@@ -1,6 +1,6 @@
 module Rematch2
 
-export @match, MatchFailure
+export @match, @match2, MatchFailure
 
 using MacroTools: MacroTools, @capture
 using Base: ImmutableDict

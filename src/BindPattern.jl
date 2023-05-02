@@ -21,13 +21,17 @@ struct BinderState
     # Assertions that should be executed at runtime before the matching code.
     assertions::Vector{Any}
 
+    # A dictionary used to intern CodePoint values in Match2Cases.
+    intern::Dict
+
     function BinderState(mod::Module, input_variable::Symbol)
         new(
             mod,
             input_variable,
             Dict{BoundFetchPattern,Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
-            Vector{Any}()
+            Vector{Any}(),
+            Dict()
             )
     end
 end
@@ -185,11 +189,11 @@ function bind_pattern!(
                 temp = get_temp(key)
                 if v1 != temp
                     save = BoundFetchBindingPattern(location, source, v1, key)
-                    bp1 = BoundAndPattern(location, source, [bp1, save])
+                    bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
                     save = BoundFetchBindingPattern(location, source, v2, key)
-                    bp2 = BoundAndPattern(location, source, [bp2, save])
+                    bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict(assigned, key => temp)
             end
@@ -258,7 +262,7 @@ function bind_pattern!(
         # guard
         (pattern0, assigned) = bind_pattern!(location, subpattern, input, state, assigned)
         pattern1 = BoundWhereTestPattern(location, guard, assigned)
-        pattern = BoundAndPattern(location, source, [pattern0, pattern1])
+        pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
     else
         error("$(location.file):$(location.line): Unregognized pattern syntax `$source`.")

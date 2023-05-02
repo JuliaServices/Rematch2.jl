@@ -38,6 +38,9 @@ Otherwise, throw `MatchFailure`.
 macro match(expr)
     handle_match_eq(__source__, __module__, expr)
 end
+macro match2(expr)
+    handle_match_eq(__source__, __module__, expr)
+end
 
 """
 Usage:

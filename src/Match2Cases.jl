@@ -14,16 +14,20 @@
 struct CasePartialResult
     # The index of the case, starting with 1 for the first => in the @match
     case_number::Int
+
     # Its location for error reporting purposes
     location::LineNumberNode
+
     # The set of remaining operations required to perform the match.
     # In this state, some operations may have already been done, and they
     # are removed from the bound pattern.  When the bound pattern is simply
     # `true`, it has matched.
     pattern::BoundPattern
+
     # The set of user variables to assign when the match succeeds;
     # they might be used in the result expression.
     assigned::ImmutableDict{Symbol, Symbol}
+
     # The user's result expression for this case.
     result_expression::Any
 
@@ -86,27 +90,25 @@ function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
 end
 pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
-pretty(io::IO, p::BoundEqualValueTestPattern) = print(io, p.input, "==", p.value)
-pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, p.relation, p.value)
-pretty(io::IO, p::BoundWhereTestPattern) = print(io, p.source)
+pretty(io::IO, p::BoundEqualValueTestPattern) = print(io, p.input, " == ", p.value)
+pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, " ", p.relation, ", ", p.value)
+pretty(io::IO, p::BoundWhereTestPattern) = print(io, "where ", p.source)
 pretty(io::IO, p::BoundTypeTestPattern) = print(io, p.input, " isa ", p.type)
-op(p::BoundOrPattern) = "OR"
-op(p::BoundAndPattern) = "AND"
 function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern})
-    print(io, op(p))
-    print(io, "[")
+    op = (p isa BoundOrPattern) ? "||" : "&&"
+    print(io, "(")
     first = true
     for sp in p.subpatterns
         if sp isa BoundFetchBindingPattern; continue; end
-        first || print(io, ", ")
+        first || print(io, " ", op, " ")
         first = false
         pretty(io, sp)
     end
-    print(io, "]")
+    print(io, ")")
 end
 pretty(io::IO, p::BoundFetchFieldPattern) = print(io, p.input, ".", p.field_name)
 pretty(io::IO, p::BoundFetchIndexPattern) = print(io, p.input, "[", p.index, "]")
-pretty(io::IO, p::BoundFetchRangePattern) = print(io, p.input, "[", p.first_index, ":", p.from_end, "]")
+pretty(io::IO, p::BoundFetchRangePattern) = print(io, p.input, "[", p.first_index, ":(length(", p.input, ")-", p.from_end, ")]")
 pretty(io::IO, p::BoundFetchLengthPattern) = print(io, "length(", p.input, ")")
 
 #
@@ -130,7 +132,7 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state
     end
 end
 function simplify(pattern::BoundWhereTestPattern, required_temps::Set{Symbol}, state::BinderState)
-    for (v, t) in required_temps
+    for (v, t) in pattern.assigned
         push!(required_temps, t)
     end
     pattern
@@ -172,12 +174,12 @@ mutable struct CodePoint
     # The state of the cases.  Impossible cases, which are designated by a
     # `false` `bound_pattern`, are removed from this array.  Cases are always
     # ordered by `case_number`.
-    cases::ImmutableVector{CasePartialResult}
+    const cases::ImmutableVector{CasePartialResult}
 
     # When the cases have been exhausted in the state machine, the cases in the tail
     # are then handled.  This offers a simple way to build the state machine as a
     # directed acyclic graph, for example to handle "or" patterns.
-    tail::Union{Nothing, CodePoint}
+    const tail::Union{Nothing, CodePoint}
 
     # A label to produce in the code at entry to the code where
     # this state is implemented, if one is needed.
@@ -188,7 +190,7 @@ mutable struct CodePoint
     # - Case whose tests have all passed, or
     # - A bound pattern to perform and then move on to the next state, or
     # - An Expr to insert into the code when all else is exhausted
-    #   (which throws MatchFailure or yields the programmer's result)
+    #   (which throws MatchFailure)
     action::Union{Nothing, CasePartialResult, BoundPattern, Expr}
 
     # The next code point(s):
@@ -222,11 +224,18 @@ function ensure_label!(code::CodePoint)
         code.label = gensym("label")
     end
 end
-function name(code::CodePoint)
-    if !isdefined(@__MODULE__, :baseref)
-        global baseref = UInt(pointer_from_objref(code))
+function simple_name(code::CodePoint)
+    h::UInt = hash(code)
+    io = IOBuffer()
+    for i in 1:5
+        x = rem(h, 27)
+        if x != 0; print(io, ('a':'z')[x]); end
+        h = div(h, 27)
     end
-    name = UInt(pointer_from_objref(code)) - baseref
+    String(take!(io))
+end
+function name(code::CodePoint)
+    name = simple_name(code)
     if code.label isa Nothing
         "CodePoint $name"
     else
@@ -302,7 +311,7 @@ function bind_case(
     case,
     state::BinderState)
     if !(@capture(case, pattern_ => result_))
-        error("$(location.file):$(location.line): Unrecognized @match case syntax: `$case`.")
+        error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     end
 
     (bound_pattern, assigned) = bind_pattern!(
@@ -310,15 +319,11 @@ function bind_case(
     return CasePartialResult(case_number, location, bound_pattern, assigned, result)
 end
 
-function handle_match2_cases(location::LineNumberNode, mod::Module, value, match)
-    if !(match isa Expr) || match.head != :block
-        error("$(location.file):$(location.line): Unrecognized @match block syntax: `$match`.")
-    end
-
-    input_variable::Symbol = gensym("input_value")
-    state = BinderState(mod, input_variable)
+#
+# Build the state machine and return its entry point.
+#
+function build_state_machine(value, match, location::LineNumberNode, state::BinderState)::CodePoint
     cases = CasePartialResult[]
-
     for case in match.args
         if case isa LineNumberNode
             location = case
@@ -329,13 +334,12 @@ function handle_match2_cases(location::LineNumberNode, mod::Module, value, match
         end
     end
     entry = CodePoint(cases)
+
     work_queue = Set{CodePoint}([entry])
-    intern = Dict{CodePoint, CodePoint}()
-    global baseref = UInt(pointer_from_objref(entry))
     while !isempty(work_queue)
         code = pop!(work_queue)
         if code.action isa Nothing
-            set_next!(code, state, intern)
+            set_next!(code, state)
             @assert !(code.action isa Nothing)
             next = code.next
             @assert !(next isa Nothing)
@@ -359,23 +363,86 @@ function handle_match2_cases(location::LineNumberNode, mod::Module, value, match
         @assert !(code.action isa Nothing)
     end
 
-    dumpall(entry)
-    return nothing
+    entry
+end
 
+function generate_code(entry::CodePoint, value, state::BinderState)
+    result_variable = gensym("match_result")
+    result_label = gensym("completed")
+    emit = Any[:($(state.input_variable) = $(esc(value)))]
+    togen = CodePoint[entry]
+    generated = Set{CodePoint}()
 
-    error("not implemented")
+    while !isempty(togen)
+        pc = pop!(togen)
+        if pc in generated; continue; end
+        push!(generated, pc)
+        if pc.label isa Symbol
+            push!(emit, :(@label $(pc.label)))
+        end
+        action = pc.action
+        if action isa CasePartialResult
+            # We've matched a pattern.
+            result = :($result_variable = $(esc(action.result_expression)))
+            if !isempty(action.assigned)
+                result = Expr(:let, Expr(:block, assignments(action.assigned)...), result)
+            end
+            push!(emit, action.location)
+            push!(emit, result)
+            push!(emit, :(@goto $result_label))
+        elseif action isa BoundFetchPattern
+            push!(emit, code(action, state))
+            (next::CodePoint,) = pc.next
+            if next in generated
+                @assert next.label isa Symbol
+                push!(emit, :(@goto $(next.label)))
+            else
+                push!(togen, next)
+            end
+        elseif action isa BoundTestPattern
+            (next_true, next_false) = pc.next
+            @assert next_false.label isa Symbol
+            push!(emit, :($(code(action, state)) || @goto $(next_false.label)))
+            push!(togen, next_false)
+            if next_true in generated
+                @assert next_true.label isa Symbol
+                push!(emit, :(@goto $(next_true.label)))
+            else
+                push!(togen, next_true)
+            end
+        elseif action isa Expr
+            push!(emit, action)
+        else
+            error("this code point ($(typeof(action))) is believed unreachable")
+        end
+    end
 
-    # result_variable = gensym("match_result")
-    # code = Any[state.assertions..., :($input_variable = $(esc(value)))]
-    # tail = :(throw(MatchFailure($input_variable)))
-    # n = length(cases)
-    # for (i, case) in enumerate(reverse(cases))
-    #     eval = Expr(:block, case.location, esc(case.result_expression))
-    #     result = Expr(:let, Expr(:block, assignments(case.assigned)...), eval)
-    #     tail = Expr(i == n ? :if : :elseif, case.matched_expression, result, tail)
-    # end
-    # Expr(:block, state.assertions..., :($input_variable = $(esc(value))), tail)
+    push!(emit, :(@label $result_label))
+    push!(emit, result_variable)
+    Expr(:let, Expr(:block, :($result_variable = nothing)), Expr(:block, state.assertions..., emit...))
+end
 
+function handle_match2_cases(location::LineNumberNode, mod::Module, value, match)
+    if (match isa Expr && match.head == :call && match.args[1] == :(=>))
+        # previous version of @match supports `@match(expr, pattern => value)`
+        match = Expr(:block, match)
+    elseif !(match isa Expr) || match.head != :block
+        error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$match`.")
+    end
+
+    input_variable::Symbol = gensym("input_value")
+    state = BinderState(mod, input_variable)
+    entry = build_state_machine(value, match, location, state)
+
+    #
+    # When diagnosing or optimizing the pattern-matching machinery, comment out the
+    # following `dumpall(entry)` statement to see what the state machine looks like
+    # and how it is computed.  In this form it is easy to find optimization
+    # opportunities.
+    #
+    # dumpall(entry)
+
+    generate_code(entry, value, state)
 end
 
 next_action(pattern::BoundPattern) = pattern
@@ -400,13 +467,13 @@ function next_action(
     end
     return next_action(first_case.pattern)
 end
-function set_next!(code::CodePoint, state::BinderState, intern::Dict{CodePoint, CodePoint})
+function set_next!(code::CodePoint, state::BinderState)
     @assert code.action isa Nothing
     @assert code.next isa Nothing
 
     action::Union{CasePartialResult, BoundPattern, Expr} = next_action(code, state)
     next::Union{Tuple{}, Tuple{CodePoint}, Tuple{CodePoint, CodePoint}} =
-        make_next(code, action, state, intern)
+        make_next(code, action, state)
     code.action = action
     code.next = next
     @assert !(code.next isa Nothing)
@@ -415,26 +482,30 @@ end
 function make_next(
     code::CodePoint,
     action::Union{CasePartialResult, Expr},
-    state::BinderState,
-    intern::Dict{CodePoint, CodePoint})
+    state::BinderState)
     return ()
 end
 function make_next(
     code::CodePoint,
     action::BoundPattern,
-    state::BinderState,
-    intern::Dict{CodePoint, CodePoint})
+    state::BinderState)
     error("pattern cannot be the next action: $(typeof(action))")
+end
+function intern(code::CodePoint, state::BinderState)
+    newcode = get!(state.intern, code, code)
+    if newcode !== code
+        ensure_label!(newcode)
+    end
+    newcode
 end
 function make_next(
     code::CodePoint,
     action::BoundFetchPattern,
-    ::BinderState,
-    intern::Dict{CodePoint, CodePoint})::CodePoint
+    state::BinderState)::Tuple{CodePoint}
     cases = map(case -> remove(action, case), code.cases)
     cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
     succ = with_cases(code, cases)
-    succ = get!(intern, succ, succ)
+    succ = intern(succ, state)
     return (succ,)
 end
 function remove(action::BoundFetchPattern, pattern::BoundPattern)
@@ -444,11 +515,11 @@ function remove(action::BoundFetchPattern, pattern::BoundFetchPattern)
     return (action == pattern) ? BoundTruePattern(pattern.location, pattern.source) : pattern
 end
 function remove(action::BoundFetchPattern, pattern::BoundAndPattern)
-    subpatterns = map(p -> remove(action, p), pattern.subpatterns)
+    subpatterns = collect(BoundPattern, map(p -> remove(action, p), pattern.subpatterns))
     return BoundAndPattern(pattern.location, pattern.source, subpatterns)
 end
 function remove(action::BoundFetchPattern, pattern::BoundOrPattern)
-    subpatterns = map(p -> remove(action, p), pattern.subpatterns)
+    subpatterns = collect(BoundPattern, map(p -> remove(action, p), pattern.subpatterns))
     return BoundOrPattern(pattern.location, pattern.source, subpatterns)
 end
 function remove(action::BoundFetchPattern, case::CasePartialResult)
@@ -462,14 +533,24 @@ const Sense = Union{Val{true}, Val{false}}
 function make_next(
     code::CodePoint,
     action::BoundTestPattern,
-    state::BinderState,
-    intern::Dict{CodePoint, CodePoint})::Tuple{CodePoint, CodePoint}
+    state::BinderState)::Tuple{CodePoint, CodePoint}
     true_next = remove(action, TrueSense, code)
     false_next = remove(action, FalseSense, code)
+    # simplify each state to remove unnecessary cases
+    true_next = simplify(true_next)
+    false_next = simplify(false_next)
     # TODO: Remove a common tail between the two successor states
-    true_next = get!(intern, true_next, true_next)
-    false_next = get!(intern, false_next, false_next)
+    true_next = intern(true_next, state)
+    false_next = intern(false_next, state)
+    ensure_label!(false_next)
     return (true_next, false_next)
+end
+function simplify(code::CodePoint)
+    if length(code.cases) > 1 && code.cases[1].pattern isa BoundTruePattern
+        with_cases(code, [code.cases[1]])
+    else
+        code
+    end
 end
 function remove(action::BoundTestPattern, sense::Sense, code::CodePoint)::CodePoint
     cases = map(c -> remove(action, sense, c), code.cases)
@@ -481,26 +562,28 @@ function remove(action::BoundTestPattern, sense::Sense, case::CasePartialResult)
 end
 # Make a copy of `pattern` with the removal of any parts that are redundant given
 # that `action` is known to have a result `sense`.
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundPattern)
+function remove(action::BoundTestPattern, sense::Sense, pattern::BoundPattern)::BoundPattern
     error("not implemented: remove(::$(typeof(action)), ::$(typeof(sense)), ::$(typeof(pattern)))")
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::Union{BoundTruePattern, BoundFalsePattern, BoundFetchPattern})
+function remove(action::BoundTestPattern, sense::Sense, pattern::Union{BoundTruePattern, BoundFalsePattern, BoundFetchPattern})::BoundPattern
     pattern
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundAndPattern)
-    BoundAndPattern(pattern.location, pattern.source, map(p -> remove(action, sense, p), pattern.subpatterns))
+function remove(action::BoundTestPattern, sense::Sense, pattern::BoundAndPattern)::BoundPattern
+    BoundAndPattern(pattern.location, pattern.source,
+        collect(BoundPattern, map(p -> remove(action, sense, p)::BoundPattern, pattern.subpatterns)))
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundOrPattern)
-    BoundOrPattern(pattern.location, pattern.source, map(p -> remove(action, sense, p), pattern.subpatterns))
+function remove(action::BoundTestPattern, sense::Sense, pattern::BoundOrPattern)::BoundPattern
+    BoundOrPattern(pattern.location, pattern.source,
+        collect(BoundPattern, map(p -> remove(action, sense, p)::BoundPattern, pattern.subpatterns)))
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundTestPattern)
+function remove(action::BoundTestPattern, sense::Sense, pattern::BoundTestPattern)::BoundPattern
     if (action == pattern)
         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
     else
         pattern
     end
 end
-# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)
+# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input
@@ -511,7 +594,7 @@ end
 #         pattern
 #     end
 # end
-# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)
+# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input
@@ -520,7 +603,7 @@ end
 #         pattern
 #     end
 # end
-# function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTestPattern)
+# function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input
@@ -529,7 +612,7 @@ end
 #         pattern
 #     end
 # end
-# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)
+# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input
@@ -538,7 +621,7 @@ end
 #         pattern
 #     end
 # end
-# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)
+# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input

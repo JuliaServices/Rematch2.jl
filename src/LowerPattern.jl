@@ -13,7 +13,7 @@ code(bound_pattern::BoundTruePattern, state::BinderState) = true
 code(bound_pattern::BoundFalsePattern, state::BinderState) = false
 function code(bound_pattern::BoundEqualValueTestPattern, state::BinderState)
     value = bound_pattern.value
-    needs_let = value isa Expr || !isempty(bound_pattern.assigned)
+    needs_let = (value isa Expr || value isa Symbol) && !isempty(bound_pattern.assigned)
     eval = :(isequal($(bound_pattern.input), $(bound_pattern.value)))
     if needs_let
         block = Expr(:block, bound_pattern.location, eval)
@@ -24,7 +24,7 @@ function code(bound_pattern::BoundEqualValueTestPattern, state::BinderState)
 end
 function code(bound_pattern::BoundRelationalTestPattern, state::BinderState)
     @assert bound_pattern.relation == :>=
-    :($(bound_pattern.relation)($(bound_pattern.input), $(esc(bound_pattern.value))))
+    :($(bound_pattern.relation)($(bound_pattern.input), $(bound_pattern.value)))
 end
 function code(bound_pattern::BoundWhereTestPattern, state::BinderState)
     eval = esc(bound_pattern.source)
