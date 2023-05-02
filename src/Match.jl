@@ -38,6 +38,17 @@ Otherwise, throw `MatchFailure`.
 macro match(expr)
     handle_match_eq(__source__, __module__, expr)
 end
+
+"""
+Usage:
+
+```
+    @match2 pattern = value
+```
+
+If `value` matches `pattern`, bind variables and return `value`.
+Otherwise, throw `MatchFailure`.
+"""
 macro match2(expr)
     handle_match_eq(__source__, __module__, expr)
 end
@@ -83,7 +94,7 @@ This macro has two forms.
 - The single-pattern form:
 
 ```
-    @match pattern = value
+    @match2 pattern = value
 ```
 
   If `value` matches `pattern`, bind variables and return `value`.
@@ -92,7 +103,7 @@ This macro has two forms.
 - The multi-pattern form:
 
 ```
-    @match value begin
+    @match2 value begin
         pattern1 => result1
         pattern2 => result2
         ...

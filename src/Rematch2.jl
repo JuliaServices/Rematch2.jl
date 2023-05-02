@@ -11,7 +11,6 @@ end
 
 include("TopologicalSort.jl")
 include("ImmutableVector.jl")
-include("FirstSupertypeTester.jl")
 include("BoundPattern.jl")
 include("BindPattern.jl")
 include("LowerPattern.jl")
