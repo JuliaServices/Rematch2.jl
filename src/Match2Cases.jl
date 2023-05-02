@@ -583,6 +583,36 @@ function remove(action::BoundTestPattern, sense::Sense, pattern::BoundTestPatter
         pattern
     end
 end
+function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTestPattern)::BoundPattern
+    succeeded = typeof(sense).parameters[1]
+    if (action == pattern)
+        return BoundBoolPattern(pattern.location, pattern.source, succeeded)
+    elseif action.input != pattern.input
+        return pattern
+    elseif succeeded
+        # the type test succeeded.
+        if action.type <: pattern.type
+            return BoundBoolPattern(pattern.location, pattern.source, true)
+        elseif pattern.type <: action.type
+            # we are asking about a narrower type - result unknown
+            return pattern
+        elseif typeintersect(pattern.type, action.type) == Base.Bottom
+            # their intersection is empty, so it cannot be pattern.type
+            return BoundBoolPattern(pattern.location, pattern.source, false)
+        end
+    else
+        # the type test failed.
+        if action.type <: pattern.type
+            # we are asking about a wider type - result unknown
+            return pattern
+        elseif pattern.type <: action.type
+            # if it wasn't the wider type, then it won't be the narrower type
+            return BoundBoolPattern(pattern.location, pattern.source, false)
+        else
+            return pattern
+        end
+    end
+end
 # function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
@@ -595,15 +625,6 @@ end
 #     end
 # end
 # function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)::BoundPattern
-#     if (action == pattern)
-#         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
-#     else if action.input == pattern.input
-#         error("not implemented")
-#     else
-#         pattern
-#     end
-# end
-# function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTestPattern)::BoundPattern
 #     if (action == pattern)
 #         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
 #     else if action.input == pattern.input
