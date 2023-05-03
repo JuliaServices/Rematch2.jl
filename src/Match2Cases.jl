@@ -67,16 +67,11 @@ function pretty(x)
     pretty(io, x)
     String(take!(io))
 end
-function pretty(io::IO, case::CasePartialResult)
+function pretty(io::IO, case::CasePartialResult, state::BinderState)
     print(io, case.case_number, ": ")
-    pretty(io, case.pattern)
-    if !isempty(case.assigned)
-        print(io, " ")
-        pretty(io, case.assigned)
-    end
-    print(io, " (=> ")
+    pretty(io, case.pattern, state)
+    print(io, " => ")
     print(io, case.result_expression)
-    print(io, ")")
 end
 function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
     print(io, "[")
@@ -88,21 +83,30 @@ function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
     end
     print(io, "]")
 end
+pretty(io::IO, p::BoundPattern, state::BinderState) = pretty(io, p)
+function pretty(io::IO, p::BoundFetchPattern, state::BinderState)
+    temp = get_temp(state, p)
+    print(io, temp, "=")
+    pretty(io, p)
+end
 pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 pretty(io::IO, p::BoundEqualValueTestPattern) = print(io, p.input, " == ", p.value)
 pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, " ", p.relation, ", ", p.value)
-pretty(io::IO, p::BoundWhereTestPattern) = print(io, "where ", p.source)
+function pretty(io::IO, p::BoundWhereTestPattern)
+    print(io, "where ")
+    isempty(p.assigned) || pretty(io, p.assigned)
+    print(io, p.source)
+end
 pretty(io::IO, p::BoundTypeTestPattern) = print(io, p.input, " isa ", p.type)
-function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern})
+function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, state::BinderState)
     op = (p isa BoundOrPattern) ? "||" : "&&"
     print(io, "(")
     first = true
     for sp in p.subpatterns
-        if sp isa BoundFetchBindingPattern; continue; end
         first || print(io, " ", op, " ")
         first = false
-        pretty(io, sp)
+        pretty(io, sp, state)
     end
     print(io, ")")
 end
@@ -110,6 +114,7 @@ pretty(io::IO, p::BoundFetchFieldPattern) = print(io, p.input, ".", p.field_name
 pretty(io::IO, p::BoundFetchIndexPattern) = print(io, p.input, "[", p.index, "]")
 pretty(io::IO, p::BoundFetchRangePattern) = print(io, p.input, "[", p.first_index, ":(length(", p.input, ")-", p.from_end, ")]")
 pretty(io::IO, p::BoundFetchLengthPattern) = print(io, "length(", p.input, ")")
+pretty(io::IO, p::BoundFetchBindingPattern) = print(io, p.input)
 
 #
 # Simplify a pattern by removing fetch operations that are not used.
@@ -242,11 +247,11 @@ function name(code::CodePoint)
         "CodePoint $name ($(code.label))"
     end
 end
-function pretty(io::IO, code::CodePoint)
+function pretty(io::IO, code::CodePoint, state::BinderState)
     println(io, name(code))
     for case in code.cases
         print(io, "  ")
-        pretty(io, case)
+        pretty(io, case, state)
         println(io)
     end
     if code.tail isa CodePoint
@@ -257,10 +262,12 @@ function pretty(io::IO, code::CodePoint)
     if action isa Nothing
         println(io, "not computed")
     elseif action isa CasePartialResult
-        println(io, "completed case ", action.case_number, " with value ", action.result_expression)
+        print(io, "completed case ", action.case_number, " with value ")
+        isempty(action.assigned) || pretty(io, action.assigned)
+        println(io, " ", action.result_expression)
     elseif action isa BoundPattern
         print(io, "execute pattern ")
-        pretty(io, action)
+        pretty(io, action, state)
         println(io)
     elseif action isa Expr
         println(io, "execute code ", action)
@@ -287,12 +294,12 @@ function reachable_states(root::CodePoint)::Vector{CodePoint}
     topological_sort([root], successors)
 end
 
-function dumpall(io::IO, root::CodePoint)
+function dumpall(io::IO, root::CodePoint, state::BinderState)
     all::Vector{CodePoint} = reachable_states(root)
     println(io)
     println(io, "State Machine:")
     for code in all
-        pretty(io, code)
+        pretty(io, code, state)
     end
     println(io, "end # of state machine")
 end
@@ -300,7 +307,7 @@ end
 # Print the entire state machine to `stdout`.  Useful for debugging the state
 # machine and looking for optimization opportunities.
 #
-dumpall(root::CodePoint) = dumpall(stdout, root)
+dumpall(root::CodePoint, state::BinderState) = dumpall(stdout, root, state)
 
 #
 # Bind a case, producing a case partial result.
@@ -440,7 +447,7 @@ function handle_match2_cases(location::LineNumberNode, mod::Module, value, match
     # and how it is computed.  In this form it is easy to find optimization
     # opportunities.
     #
-    # dumpall(entry)
+    # dumpall(entry, state)
 
     generate_code(entry, value, state)
 end
@@ -545,8 +552,11 @@ function make_next(
     ensure_label!(false_next)
     return (true_next, false_next)
 end
+any_tests(pattern::Union{BoundFetchPattern, BoundTruePattern}) = false
+any_tests(pattern::BoundTestPattern) = true
+any_tests(pattern::Union{BoundAndPattern, BoundOrPattern}) = any(any_tests, pattern.subpatterns)
 function simplify(code::CodePoint)
-    if length(code.cases) > 1 && code.cases[1].pattern isa BoundTruePattern
+    if length(code.cases) > 1 && !any_tests(code.cases[1].pattern)
         with_cases(code, [code.cases[1]])
     else
         code
