@@ -171,6 +171,14 @@ function simplify(case::CasePartialResult, state::BinderState)
     return with_pattern(case, simplified_pattern)
 end
 
+macro _const(x)
+    if VERSION >= v"1.8"
+        Expr(:const, esc(x))
+    else
+        esc(x)
+    end
+end
+
 #
 # A state of the decision automaton (i.e. a point in the generated code),
 # which is a set of partially matched cases.
@@ -179,12 +187,12 @@ mutable struct CodePoint
     # The state of the cases.  Impossible cases, which are designated by a
     # `false` `bound_pattern`, are removed from this array.  Cases are always
     # ordered by `case_number`.
-    const cases::ImmutableVector{CasePartialResult}
+    @_const cases::ImmutableVector{CasePartialResult}
 
     # When the cases have been exhausted in the state machine, the cases in the tail
     # are then handled.  This offers a simple way to build the state machine as a
     # directed acyclic graph, for example to handle "or" patterns.
-    const tail::Union{Nothing, CodePoint}
+    @_const tail::Union{Nothing, CodePoint}
 
     # A label to produce in the code at entry to the code where
     # this state is implemented, if one is needed.
