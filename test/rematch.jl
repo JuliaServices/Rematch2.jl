@@ -443,12 +443,16 @@ end
         Foo(_,y::Symbol) => y
         Foo(x::Symbol,_) => x
     end
-    @test @inferred(infer3(Foo(1,:ok))) == :ok
+    if VERSION >= v"1.6"
+        @test @inferred(infer3(Foo(1,:ok))) == :ok
+    end
     infer4(foo) = @match foo begin
         Foo(x,y::Symbol) => y
         Foo(x::Symbol,y) => x
     end
-    @test @inferred(infer4(Foo(1,:ok))) == :ok
+    if VERSION >= v"1.6"
+        @test @inferred(infer4(Foo(1,:ok))) == :ok
+    end
 end
 
 @testset "Nested Guards" begin
@@ -478,8 +482,6 @@ end
         Foo(x) => :nope
     end)
 end
-
-struct True end
 
 @testset "Miscellanea" begin
     # match against fiddly symbols (https://github.com/kmsquire/Match.jl/issues/32)
