@@ -1,10 +1,11 @@
 module Rematch2Tests
 
-using Rematch2
+import Rematch2: @match, @match2, MatchFailure, Rematch2
 using ReTest
-using Random
+import Random
+import MacroTools
 
-include("test_FirstSupertypeTester.jl")
+include("utils.jl")
 include("rematch.jl")
 include("rematch2.jl")
 

@@ -1,9 +1,21 @@
 module Rematch2
 
-import MacroTools
-import MacroTools: @capture
+export @match, @match2, MatchFailure
 
-include("FirstSupertypeTester.jl")
-include("PatternBinder.jl")
+using MacroTools: MacroTools, @capture
+using Base: ImmutableDict
 
+struct MatchFailure <: Exception
+    value
 end
+
+include("TopologicalSort.jl")
+include("ImmutableVector.jl")
+include("BoundPattern.jl")
+include("BindPattern.jl")
+include("LowerPattern.jl")
+include("MatchCases.jl")
+include("Match.jl")
+include("Match2Cases.jl")
+
+end # module
