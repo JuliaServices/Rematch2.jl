@@ -434,7 +434,7 @@ function generate_code(entry::CodePoint, value, state::BinderState)
 
     push!(emit, :(@label $result_label))
     push!(emit, result_variable)
-    Expr(:let, Expr(:block, :($result_variable = nothing)), Expr(:block, state.assertions..., emit...))
+    Expr(:let, Expr(:block, :($result_variable = $nothing)), Expr(:block, state.assertions..., emit...))
 end
 
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, match)
@@ -473,7 +473,7 @@ function next_action(
     if isempty(code.cases)
         @assert code.tail isa Nothing
         # cases have been exhausted.  Return code to throw a match failure.
-        return :(throw(MatchFailure($(state.input_variable))))
+        return :($throw(MatchFailure($(state.input_variable))))
     end
     first_case = code.cases[1]
     if first_case.pattern isa BoundTruePattern
