@@ -15,11 +15,11 @@ function code(bound_pattern::BoundEqualValueTestPattern, state::BinderState)
     value = bound_pattern.value
     needs_let = (value isa Expr || value isa Symbol) && !isempty(bound_pattern.assigned)
     eval = :($isequal($(bound_pattern.input), $(bound_pattern.value)))
+    block = Expr(:block, bound_pattern.location, eval)
     if needs_let
-        block = Expr(:block, bound_pattern.location, eval)
         Expr(:let, Expr(:block, assignments(bound_pattern.assigned)...), block)
     else
-        eval
+        block
     end
 end
 function code(bound_pattern::BoundRelationalTestPattern, state::BinderState)
@@ -79,7 +79,7 @@ function code(bound_pattern::BoundFetchLengthPattern, state::BinderState)
     :($tempvar = $length($(bound_pattern.input)))
 end
 function code(bound_pattern::BoundFetchBindingPattern, state::BinderState)
-    tempvar = get_temp(bound_pattern.variable)
+    tempvar = get_temp(state, bound_pattern)
     :($(tempvar) = $(bound_pattern.input))
 end
 

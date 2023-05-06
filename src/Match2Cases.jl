@@ -412,6 +412,10 @@ function generate_code(entry::CodePoint, value, state::BinderState)
                 @assert next.label isa Symbol
                 push!(emit, :(@goto $(next.label)))
             else
+                # we don't need a `goto` for the next state here:
+                # it hasn't been generated yet, and we're pushing
+                # it on the stack to be generated next.  We'll just
+                # fall through to its code.
                 push!(togen, next)
             end
         elseif action isa BoundTestPattern
@@ -423,6 +427,8 @@ function generate_code(entry::CodePoint, value, state::BinderState)
                 @assert next_true.label isa Symbol
                 push!(emit, :(@goto $(next_true.label)))
             else
+                # Push it on the stack of code to generate next, so
+                # we can just fall into it instead of producing a `goto`.
                 push!(togen, next_true)
             end
         elseif action isa Expr
@@ -507,6 +513,7 @@ function make_next(
     error("pattern cannot be the next action: $(typeof(action))")
 end
 function intern(code::CodePoint, state::BinderState)
+    @assert code.label isa Nothing
     newcode = get!(state.intern, code, code)
     if newcode !== code
         ensure_label!(newcode)
@@ -541,22 +548,20 @@ function remove(action::BoundFetchPattern, case::CasePartialResult)
     return with_pattern(case, remove(action, case.pattern))
 end
 
-const TrueSense = Val(true)
-const FalseSense = Val(false)
-const Sense = Union{Val{true}, Val{false}}
 # When a test occurs, there are two subsequent states, depending on the outcome of the test.
 function make_next(
     code::CodePoint,
     action::BoundTestPattern,
     state::BinderState)::Tuple{CodePoint, CodePoint}
-    true_next = remove(action, TrueSense, code)
-    false_next = remove(action, FalseSense, code)
+    true_next = remove(action, true, code)
+    false_next = remove(action, false, code)
     # simplify each state to remove unnecessary cases
     true_next = simplify(true_next)
     false_next = simplify(false_next)
     # TODO: Remove a common tail between the two successor states
     true_next = intern(true_next, state)
     false_next = intern(false_next, state)
+    # we will fall through to the code for true but jump to the code for false
     ensure_label!(false_next)
     return (true_next, false_next)
 end
@@ -570,53 +575,52 @@ function simplify(code::CodePoint)
         code
     end
 end
-function remove(action::BoundTestPattern, sense::Sense, code::CodePoint)::CodePoint
+function remove(action::BoundTestPattern, sense::Bool, code::CodePoint)::CodePoint
     cases = map(c -> remove(action, sense, c), code.cases)
     cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
     return with_cases(code, cases)
 end
-function remove(action::BoundTestPattern, sense::Sense, case::CasePartialResult)
+function remove(action::BoundTestPattern, sense::Bool, case::CasePartialResult)
     return with_pattern(case, remove(action, sense, case.pattern))
 end
 # Make a copy of `pattern` with the removal of any parts that are redundant given
 # that `action` is known to have a result `sense`.
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundPattern)::BoundPattern
+function remove(action::BoundTestPattern, sense::Bool, pattern::BoundPattern)::BoundPattern
     error("not implemented: remove(::$(typeof(action)), ::$(typeof(sense)), ::$(typeof(pattern)))")
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::Union{BoundTruePattern, BoundFalsePattern, BoundFetchPattern})::BoundPattern
+function remove(action::BoundTestPattern, sense::Bool, pattern::Union{BoundTruePattern, BoundFalsePattern, BoundFetchPattern})::BoundPattern
     pattern
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundAndPattern)::BoundPattern
+function remove(action::BoundTestPattern, sense::Bool, pattern::BoundAndPattern)::BoundPattern
     BoundAndPattern(pattern.location, pattern.source,
         collect(BoundPattern, map(p -> remove(action, sense, p)::BoundPattern, pattern.subpatterns)))
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundOrPattern)::BoundPattern
+function remove(action::BoundTestPattern, sense::Bool, pattern::BoundOrPattern)::BoundPattern
     BoundOrPattern(pattern.location, pattern.source,
         collect(BoundPattern, map(p -> remove(action, sense, p)::BoundPattern, pattern.subpatterns)))
 end
-function remove(action::BoundTestPattern, sense::Sense, pattern::BoundTestPattern)::BoundPattern
+function remove(action::BoundTestPattern, sense::Bool, pattern::BoundTestPattern)::BoundPattern
     if (action == pattern)
-        BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
+        BoundBoolPattern(pattern.location, pattern.source, sense)
     else
         pattern
     end
 end
-function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTestPattern)::BoundPattern
-    succeeded = typeof(sense).parameters[1]
+function remove(action::BoundTypeTestPattern, sense::Bool, pattern::BoundTypeTestPattern)::BoundPattern
     if (action == pattern)
-        return BoundBoolPattern(pattern.location, pattern.source, succeeded)
+        return BoundBoolPattern(pattern.location, pattern.source, sense)
     elseif action.input != pattern.input
         return pattern
-    elseif succeeded
+    elseif sense
         # the type test succeeded.
         if action.type <: pattern.type
-            return BoundBoolPattern(pattern.location, pattern.source, true)
+            return BoundTruePattern(pattern.location, pattern.source)
         elseif pattern.type <: action.type
             # we are asking about a narrower type - result unknown
             return pattern
         elseif typeintersect(pattern.type, action.type) == Base.Bottom
             # their intersection is empty, so it cannot be pattern.type
-            return BoundBoolPattern(pattern.location, pattern.source, false)
+            return BoundFalsePattern(pattern.location, pattern.source)
         end
     else
         # the type test failed.
@@ -625,47 +629,9 @@ function remove(action::BoundTypeTestPattern, sense::Sense, pattern::BoundTypeTe
             return pattern
         elseif pattern.type <: action.type
             # if it wasn't the wider type, then it won't be the narrower type
-            return BoundBoolPattern(pattern.location, pattern.source, false)
+            return BoundFalsePattern(pattern.location, pattern.source)
         else
             return pattern
         end
     end
 end
-# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)::BoundPattern
-#     if (action == pattern)
-#         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
-#     else if action.input == pattern.input
-#         @assert action.relation == :>=
-#         @assert pattern.relation == :>=
-#         error("not implemented")
-#     else
-#         pattern
-#     end
-# end
-# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)::BoundPattern
-#     if (action == pattern)
-#         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
-#     else if action.input == pattern.input
-#         error("not implemented")
-#     else
-#         pattern
-#     end
-# end
-# function remove(action::BoundEqualValueTestPattern, sense::Sense, pattern::BoundRelationalTestPattern)::BoundPattern
-#     if (action == pattern)
-#         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
-#     else if action.input == pattern.input
-#         error("not implemented")
-#     else
-#         pattern
-#     end
-# end
-# function remove(action::BoundRelationalTestPattern, sense::Sense, pattern::BoundEqualValueTestPattern)::BoundPattern
-#     if (action == pattern)
-#         BoundBoolPattern(pattern.location, pattern.source, typeof(sense).parameters[1])
-#     else if action.input == pattern.input
-#         error("not implemented")
-#     else
-#         pattern
-#     end
-# end

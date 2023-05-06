@@ -143,6 +143,23 @@ file = Symbol(@__FILE__)
         end
     end
 
+    @testset "field not found" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match Foo(1, 2) begin
+                    Foo(z = 1) => 1
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Type `Main.Rematch2Tests.Foo` has no field `z`."
+            end
+        end
+    end
+
     @testset "multiple splats" begin
         let line = 0
             try

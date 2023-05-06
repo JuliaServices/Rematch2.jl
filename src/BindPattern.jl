@@ -12,8 +12,9 @@ struct BinderState
     input_variable::Symbol
 
     # The bindings to be used for each intermediate computations.  This maps from the
-    # computation producing the value to the symbol for the temp holding that value.
-    assignments::Dict{BoundFetchPattern,Symbol}
+    # computation producing the value (or the pattern variable that needs a temp)
+    # to the symbol for the temp holding that value.
+    assignments::Dict{Union{BoundFetchPattern,Symbol},Symbol}
 
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
@@ -40,8 +41,12 @@ const saved_prefix = "saved#"
 function get_temp(state::BinderState, p::BoundFetchPattern)
     get!(state.assignments, p) do; gensym(); end
 end
-get_temp(state::BinderState, p::BoundFetchBindingPattern) = get_temp(p.variable)
-get_temp(p::Symbol) = Symbol(saved_prefix, p)
+function get_temp(state::BinderState, p::BoundFetchBindingPattern)
+    get!(state.assignments, p) do; get_temp(state, p.variable); end
+end
+function get_temp(state::BinderState, p::Symbol)
+    get!(state.assignments, p) do; gensym(string("saved_", p)); end
+end
 
 # We restrict the struct pattern to require something that looks like
 # a type name before the open paren.  This improves the diagnostics
@@ -151,6 +156,9 @@ function bind_pattern!(
                 @assert pat.head == :kw
                 field_name = pat.args[1]
                 pattern_source = pat.args[2]
+                if !(field_name in field_names)
+                    error("$(location.file):$(location.line): Type `$bound_type` has no field `$field_name`.")
+                end
             end
 
             # TODO: track the field type if it was declared
@@ -186,7 +194,7 @@ function bind_pattern!(
             if v1 == v2
                 assigned = ImmutableDict(assigned, key => v1)
             else
-                temp = get_temp(key)
+                temp = get_temp(state, key)
                 if v1 != temp
                     save = BoundFetchBindingPattern(location, source, v1, key)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
