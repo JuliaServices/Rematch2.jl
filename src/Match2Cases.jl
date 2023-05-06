@@ -189,11 +189,6 @@ mutable struct CodePoint
     # ordered by `case_number`.
     @_const cases::ImmutableVector{CasePartialResult}
 
-    # When the cases have been exhausted in the state machine, the cases in the tail
-    # are then handled.  This offers a simple way to build the state machine as a
-    # directed acyclic graph, for example to handle "or" patterns.
-    @_const tail::Union{Nothing, CodePoint}
-
     # A label to produce in the code at entry to the code where
     # this state is implemented, if one is needed.
     label::Union{Nothing, Symbol}
@@ -217,20 +212,19 @@ mutable struct CodePoint
 
     _cached_hash::UInt64
 end
-function CodePoint(cases::Vector{CasePartialResult}, tail::Union{Nothing, CodePoint} = nothing)
-    CodePoint(ImmutableVector(cases), tail, nothing, nothing, nothing,
-        hash((cases, tail), 0xc98a9a23c2d4d915))
+function CodePoint(cases::Vector{CasePartialResult})
+    CodePoint(ImmutableVector(cases), nothing, nothing, nothing,
+        hash(cases, 0xc98a9a23c2d4d915))
 end
 Base.hash(case::CodePoint, h::UInt64) = hash(case._cached_hash, h)
 Base.hash(case::CodePoint) = case._cached_hash
 function Base.:(==)(a::CodePoint, b::CodePoint)
     a === b ||
         a._cached_hash == b._cached_hash &&
-        isequal(a.cases, b.cases) &&
-        isequal(a.tail, b.tail)
+        isequal(a.cases, b.cases)
 end
 function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
-    (isempty(cases) && code.tail isa CodePoint) ? code.tail : CodePoint(cases, code.tail)
+    CodePoint(cases)
 end
 function ensure_label!(code::CodePoint)
     if code.label isa Nothing
@@ -262,9 +256,6 @@ function pretty(io::IO, code::CodePoint, state::BinderState)
         pretty(io, case, state)
         println(io)
     end
-    if code.tail isa CodePoint
-        println(io, "  ... for more cases see $(name(code.tail))")
-    end
     print(io, "    action: ")
     action = code.action
     if action isa Nothing
@@ -295,7 +286,6 @@ function pretty(io::IO, code::CodePoint, state::BinderState)
 end
 function successors(c::CodePoint)::Vector{CodePoint}
     @assert !(c.next isa Nothing)
-    @assert c.tail isa Nothing
     collect(c.next)
 end
 function reachable_states(root::CodePoint)::Vector{CodePoint}
@@ -366,9 +356,7 @@ function build_state_machine(value, match, location::LineNumberNode, state::Bind
                 if i != 1; ensure_label!(succ[i]); end
             end
         else
-            # code may have been processed already, for example
-            # when handling a common tail between two states, which happens
-            # for an "or" pattern.  We will need a label because it has
+            # We will need a label because it has
             # two predecessors in the generated code, and one of them will
             # have to jump to it rather than falling through
             next = code.next
@@ -477,7 +465,6 @@ function next_action(
     code::CodePoint,
     state::BinderState)::Union{CasePartialResult, BoundPattern, Expr}
     if isempty(code.cases)
-        @assert code.tail isa Nothing
         # cases have been exhausted.  Return code to throw a match failure.
         return :($throw(MatchFailure($(state.input_variable))))
     end
@@ -558,7 +545,6 @@ function make_next(
     # simplify each state to remove unnecessary cases
     true_next = simplify(true_next)
     false_next = simplify(false_next)
-    # TODO: Remove a common tail between the two successor states
     true_next = intern(true_next, state)
     false_next = intern(false_next, state)
     # we will fall through to the code for true but jump to the code for false
