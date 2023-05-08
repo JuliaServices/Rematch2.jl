@@ -231,6 +231,13 @@ function Base.:(==)(a::CodePoint, b::CodePoint)
         isequal(a.cases, b.cases)
 end
 function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
+    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
+    for i in eachindex(cases)
+        if is_irrefutable(cases[i].pattern)
+            cases = cases[1:i]
+            break
+        end
+    end
     CodePoint(cases)
 end
 function ensure_label!(code::CodePoint)
@@ -441,7 +448,7 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
     Expr(:block, state.assertions..., emit...)
 end
 
-function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
+function build_state_machine(location::LineNumberNode, mod::Module, value, body)
     if (body isa Expr && body.head == :call && body.args[1] == :(=>))
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
@@ -458,14 +465,46 @@ function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
     state = BinderState(mod, input_variable)
     entry = build_state_machine(value, source_cases, location, state)
 
-    #
-    # When diagnosing or optimizing the pattern-matching machinery, comment out the
-    # following `dumpall(entry)` statement to see what the state machine looks like
-    # and how it is computed.  In this form it is easy to find optimization
-    # opportunities.
-    #
-    # dumpall(entry, state)
+    return (entry, state)
+end
 
+# For testing purposes, this macro permits the caller to determine the number of states
+macro match2_count_states(value, body)
+    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    # We return a number into the caller's code.
+    count_states(entry)
+end
+function count_states(entry::CodePoint)
+    tocount = CodePoint[entry]
+    counted = Set{CodePoint}()
+    total::Int = 0
+    while !isempty(tocount)
+        pc = pop!(tocount)
+        if pc in counted; continue; end
+        push!(counted, pc)
+        total += 1
+        if pc.next isa Tuple{CodePoint}
+            push!(tocount, pc.next[1])
+        elseif pc.next isa Tuple{CodePoint, CodePoint}
+            push!(tocount, pc.next[1])
+            push!(tocount, pc.next[2])
+        end
+    end
+    total
+end
+
+# For debugging purposes, these macros print the state machine.
+macro match2_dump_states(io, value, body)
+    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    esc(:($dumpall($io, $entry, $state)))
+end
+macro match2_dump_states(value, body)
+    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    esc(:($dumpall($stdout, $entry, $state)))
+end
+
+function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
+    (entry, state) = build_state_machine(location, mod, value, body)
     result = generate_code(entry, value, location, state)
     if body.head == :let
         result = Expr(:let, body.args[1], result)
@@ -531,7 +570,6 @@ function make_next(
     action::BoundFetchPattern,
     state::BinderState)::Tuple{CodePoint}
     cases = map(case -> remove(action, case), code.cases)
-    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
     succ = with_cases(code, cases)
     succ = intern(succ, state)
     return (succ,)
@@ -562,27 +600,14 @@ function make_next(
     true_next = remove(action, true, code)
     false_next = remove(action, false, code)
     # simplify each state to remove unnecessary cases
-    true_next = simplify(true_next)
-    false_next = simplify(false_next)
     true_next = intern(true_next, state)
     false_next = intern(false_next, state)
     # we will fall through to the code for true but jump to the code for false
     ensure_label!(false_next)
     return (true_next, false_next)
 end
-any_tests(pattern::Union{BoundFetchPattern, BoundTruePattern}) = false
-any_tests(pattern::BoundTestPattern) = true
-any_tests(pattern::Union{BoundAndPattern, BoundOrPattern}) = any(any_tests, pattern.subpatterns)
-function simplify(code::CodePoint)
-    if length(code.cases) > 1 && !any_tests(code.cases[1].pattern)
-        with_cases(code, [code.cases[1]])
-    else
-        code
-    end
-end
 function remove(action::BoundTestPattern, sense::Bool, code::CodePoint)::CodePoint
     cases = map(c -> remove(action, sense, c), code.cases)
-    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
     return with_cases(code, cases)
 end
 function remove(action::BoundTestPattern, sense::Bool, case::CasePartialResult)

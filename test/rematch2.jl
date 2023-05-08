@@ -85,6 +85,64 @@ end
     end
 end
 
+@testset "test for state machine optimizations 1" begin
+    # 1. Test for type Foo
+    # 2. Fetch second field
+    # 3. Compare against 2
+    # 4. Success!
+    # 5. Failure!
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) => 1
+    end) == 5
+end
+
+@testset "test for state machine optimizations 2" begin
+    # 1. Test for type Foo
+    # 2. Fetch second field
+    # 3. Compare against 2
+    # 4. Success 1!
+    # 5. Success 2!
+    # 6. Success 4!
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) => 1
+        Foo(_, _) => 2
+        Foo(1, 6) => 3
+        _ => 4
+    end) == 6
+end
+
+@testset "test for state machine optimizations 3" begin
+    # 1. Test for type Foo
+    # 2. Fetch first field
+    # 3. Fetch second field
+    # 4. Compare against 2
+    # 5. Success x!
+    # 6. Success 2!
+    # 7. Success 4!
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) => x
+        Foo(_, _) => 2
+        Foo(1, 6) => 3
+        _ => 4
+    end) == 7
+end
+
+@testset "test for state machine optimizations 4" begin
+    # 1. Test for type Foo
+    # 2. Fetch first field
+    # 3. Fetch second field
+    # 4. Compare against 1
+    # 5. Success x!
+    # 6. Success 2!
+    # 7. Success 4!
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(1, x) => x
+        Foo(_, _) => 2
+        Foo(1, 6) => 3
+        _ => 4
+    end) == 7
+end
+
 file = Symbol(@__FILE__)
 
 @testset "diagnostics produced are excellent" begin
