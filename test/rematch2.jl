@@ -6,8 +6,8 @@
 
 @testset "@rematch2 tests" begin
 
-@testset "Assignments in the value DO leak out (when not using `let``)" begin
-    @match2 Foo(1, 2) begin
+    @testset "Assignments in the value DO leak out (when not using `let``)" begin
+        @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end
