@@ -5,24 +5,25 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     input_variable::Symbol = gensym("input_value")
     state = BinderState(mod, input_variable)
     (bound_pattern, assigned) = bind_pattern!(
-        location, pattern, input_variable, state, ImmutableDict{Symbol,Symbol}())
+        location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
 
     matched = lower_pattern_to_boolean(bound_pattern, state)
-    Expr(:block,
+    q = Expr(:block,
         # evaluate the assertions
         state.assertions...,
 
         # compute the input into a variable so we do not repeat its side-effects
-        :($input_variable = $(esc(value))),
+        :($input_variable = $value),
 
         # check that it matched the pattern; if not throw an exception
-        :($matched || throw(MatchFailure($input_variable))),
+        :($matched || $throw($MatchFailure($input_variable))),
 
         # assign to pattern variables.
         assignments(assigned)...,
 
         # finally, yield the input that was matched
         input_variable)
+    esc(q)
 end
 
 """

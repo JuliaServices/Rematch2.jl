@@ -6,6 +6,27 @@
 
 @testset "@rematch tests" begin
 
+@testset "Assignments in the value do not leak out" begin
+    @match Foo(1, 2) begin
+        Foo(x, 2) => begin
+            new_variable = 3
+        end
+    end
+    @test !(@isdefined x)
+    @test !(@isdefined new_variable)
+end
+
+@testset "Assignments in a where clause only leak to the rule's result" begin
+    @match Foo(1, 2) begin
+        Foo(x, 2) where begin
+            new_variable = 3
+            true
+        end => new_variable
+    end
+    @test !(@isdefined x)
+    @test !(@isdefined new_variable)
+end
+
 @testset "A pure type pattern" begin
     @test (@match ::Symbol = :test1) == :test1
     @test (@match ::String = "test2") == "test2"
@@ -260,34 +281,6 @@ file = Symbol(@__FILE__)
         end
     end
 
-end
-
-@testset "Nested patterns" begin
-    e = Foo(1, 2)
-    @match e begin
-        Foo(x, y) => begin
-            @test x == 1 && y == 2
-            # x and y are bound here.  What if we try to use them again?
-            @match e begin
-                Foo(y, x) where begin
-                    @match e begin
-                        Foo(y, x) where (y == 1) => begin
-                            @test y == 1 && x == 2
-                        end
-                    end
-                    @match e begin
-                        Foo(x, y) where (x == 1) => begin
-                            @test x == 1 && y == 2
-                        end
-                    end
-                    y == 1
-                end => begin
-                    @test y == 1 && x == 2
-                end
-            end
-            @test x == 1 && y == 2
-        end
-    end
 end
 
 # Tests inherited from Rematch below

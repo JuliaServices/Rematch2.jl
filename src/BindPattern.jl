@@ -14,7 +14,7 @@ struct BinderState
     # The bindings to be used for each intermediate computations.  This maps from the
     # computation producing the value (or the pattern variable that needs a temp)
     # to the symbol for the temp holding that value.
-    assignments::Dict{Union{BoundFetchPattern,Symbol},Symbol}
+    assignments::Dict{Union{BoundFetchPattern, Symbol}, Symbol}
 
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
@@ -29,7 +29,7 @@ struct BinderState
         new(
             mod,
             input_variable,
-            Dict{BoundFetchPattern,Symbol}(),
+            Dict{BoundFetchPattern, Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Any}(),
             Dict()
@@ -37,7 +37,6 @@ struct BinderState
     end
 end
 
-const saved_prefix = "saved#"
 function get_temp(state::BinderState, p::BoundFetchPattern)
     get!(state.assignments, p) do; gensym(); end
 end
@@ -66,7 +65,7 @@ function bind_pattern!(
     source::Any,
     input::Symbol,
     state::BinderState,
-    assigned::ImmutableDict{Symbol,Symbol})
+    assigned::ImmutableDict{Symbol, Symbol})
 
     if (source == :_)
         # wildcard pattern
@@ -78,13 +77,14 @@ function bind_pattern!(
         )
         # a constant
         pattern = BoundEqualValueTestPattern(
-            location, source, input, esc(source), ImmutableDict{Symbol, Symbol}())
+            location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
     elseif (source isa Expr && source.head == :$)
         # an interpolation
         interpolation = source.args[1]
+        (interpolation0, assigned0) = subst_patvars(interpolation, assigned)
         pattern = BoundEqualValueTestPattern(
-            location, interpolation, input, esc(interpolation), assigned)
+            location, interpolation, input, interpolation0, assigned0)
 
     elseif @capture(source, varsymbol_Symbol)
         # variable pattern (just a symbol)
@@ -92,10 +92,11 @@ function bind_pattern!(
             # previously introduced variable.  Get the symbol holding its value
             var_value = assigned[varsymbol]
             pattern = BoundEqualValueTestPattern(
-                location, source, input, var_value, ImmutableDict{Symbol, Symbol}())
+                location, source, input, var_value,
+                ImmutableDict{Symbol, Symbol}(varsymbol, var_value))
         else
             # this patterns assigns the variable.
-            assigned = ImmutableDict(assigned, varsymbol => input)
+            assigned = ImmutableDict{Symbol, Symbol}(assigned, varsymbol, input)
             pattern = BoundTruePattern(location, source)
         end
 
@@ -187,12 +188,12 @@ function bind_pattern!(
 
         # compute the common assignments.
         both = intersect(keys(assigned1), keys(assigned2))
-        assigned = ImmutableDict{Symbol,Symbol}()
+        assigned = ImmutableDict{Symbol, Symbol}()
         for key in both
             v1 = assigned1[key]
             v2 = assigned2[key]
             if v1 == v2
-                assigned = ImmutableDict(assigned, key => v1)
+                assigned = ImmutableDict{Symbol, Symbol}(assigned, key, v1)
             else
                 temp = get_temp(state, key)
                 if v1 != temp
@@ -203,7 +204,7 @@ function bind_pattern!(
                     save = BoundFetchBindingPattern(location, source, v2, key)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
-                assigned = ImmutableDict(assigned, key => temp)
+                assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
             end
         end
         pattern = BoundOrPattern(location, source, BoundPattern[bp1, bp2])
@@ -237,7 +238,8 @@ function bind_pattern!(
                     location, source, length_temp, :>=, length(subpatterns)-1)
             else
                 BoundEqualValueTestPattern(
-                    location, source, length_temp, length(subpatterns), ImmutableDict{Symbol, Symbol}())
+                    location, source, length_temp, length(subpatterns),
+                    ImmutableDict{Symbol, Symbol}())
             end
         push!(patterns, check_length)
 
@@ -269,7 +271,8 @@ function bind_pattern!(
     elseif @capture(source, subpattern_ where guard_)
         # guard
         (pattern0, assigned) = bind_pattern!(location, subpattern, input, state, assigned)
-        pattern1 = BoundWhereTestPattern(location, guard, assigned)
+        (guard0, assigned0) = subst_patvars(guard, assigned)
+        pattern1 = BoundWhereTestPattern(location, guard, guard0, assigned0)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
     else
@@ -277,4 +280,23 @@ function bind_pattern!(
     end
 
     return (pattern, assigned)
+end
+
+# (interpolation, assigned0) = subst_patvars(interpolation, assigned)
+function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
+    new_assigned = ImmutableDict{Symbol, Symbol}()
+    # postwalk(f, x) = walk(x, x -> postwalk(f, x), f)
+    new_expr = MacroTools.postwalk(expr) do patvar
+        if patvar isa Symbol
+            tmpvar = get(assigned, patvar, nothing)
+            if tmpvar isa Symbol
+                if !(patvar in keys(new_assigned))
+                    new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
+                end
+                return :($identity($tmpvar))
+            end
+        end
+        patvar
+    end
+    (new_expr, new_assigned)
 end

@@ -1,4 +1,6 @@
 
+# const Assigned = ImmutableDict{Symbol, Symbol}
+
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
 # up into more primitive forms.  For example, the pattern `s::String` is represented as
 # an `AndPattern` that combines a `TypePattern` (for String) with a
@@ -42,13 +44,13 @@ struct BoundEqualValueTestPattern <: BoundTestPattern
     source::Any
     input::Symbol
     value::Any  # the value that the input should be compared to using `isequal`
-    assigned::ImmutableDict{Symbol,Symbol}
+    assigned::ImmutableDict{Symbol, Symbol}
 end
 function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
     hash((a.input, a.value, a.assigned, 0x7e92a644c831493f), h)
 end
 function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a === b || a.input == b.input && a.value == b.value && a.assigned == b.assigned
+    a.input == b.input && a.value == b.value && a.assigned == b.assigned
 end
 
 # A pattern that compares the input, which must be an Integer, using a Relational
@@ -66,20 +68,21 @@ function Base.hash(a::BoundRelationalTestPattern, h::UInt64)
     hash((a.input, a.relation, a.value, 0xbfe66949d262f0e0), h)
 end
 function Base.:(==)(a::BoundRelationalTestPattern, b::BoundRelationalTestPattern)
-    a === b || a.input == b.input && a.relation == b.relation && a.value == b.value
+    a.input == b.input && a.relation == b.relation && a.value == b.value
 end
 
 # A pattern that evaluates the given boolean expression given the assignments.
 struct BoundWhereTestPattern <: BoundTestPattern
     location::LineNumberNode
     source::Any
-    assigned::ImmutableDict{Symbol,Symbol}
+    value::Any # boolean expression to evaluate
+    assigned::ImmutableDict{Symbol, Symbol}
 end
 function Base.hash(a::BoundWhereTestPattern, h::UInt64)
-    hash((a.source, a.assigned, 0x868a8076acbe0e12), h)
+    hash((a.value, a.assigned, 0x868a8076acbe0e12), h)
 end
 function Base.:(==)(a::BoundWhereTestPattern, b::BoundWhereTestPattern)
-    a === b || a.source == b.source && a.assigned == b.assigned
+    a.value == b.value && a.assigned == b.assigned
 end
 
 # A pattern like ::Type which matches if the type matches.
@@ -93,7 +96,7 @@ function Base.hash(a::BoundTypeTestPattern, h::UInt64)
     hash((a.input, a.type, 0x92b4a01b9f8cb47b), h)
 end
 function Base.:(==)(a::BoundTypeTestPattern, b::BoundTypeTestPattern)
-    a === b || a.input == b.input && a.type == b.type
+    a.input == b.input && a.type == b.type
 end
 
 # A pattern that matches if any disjunct matches
@@ -132,7 +135,7 @@ end
 Base.hash(a::BoundOrPattern, h::UInt64) = hash(a._cached_hash, h)
 Base.hash(a::BoundOrPattern) = a._cached_hash
 function Base.:(==)(a::BoundOrPattern, b::BoundOrPattern)
-    a === b || a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
+    a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
 
 # A pattern that matches if all conjuncts match
@@ -171,7 +174,7 @@ end
 Base.hash(a::BoundAndPattern, h::UInt64) = hash(a._cached_hash, h)
 Base.hash(a::BoundAndPattern) = a._cached_hash
 function Base.:(==)(a::BoundAndPattern, b::BoundAndPattern)
-    a === b || a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
+    a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
 
 # Fetch a field of the input into into a fresh temporary synthetic variable.
@@ -191,7 +194,7 @@ function Base.hash(a::BoundFetchFieldPattern, h::UInt64)
     hash((a.input, a.field_name, 0x0c5266ab2b5ed7f1), h)
 end
 function Base.:(==)(a::BoundFetchFieldPattern, b::BoundFetchFieldPattern)
-    a === b || a.input == b.input && a.field_name == b.field_name
+    a.input == b.input && a.field_name == b.field_name
 end
 
 # Fetch a value at a given index of the input into a temporary.  See `BoundFetchFieldPattern`
@@ -208,7 +211,7 @@ function Base.hash(a::BoundFetchIndexPattern, h::UInt64)
     hash((a.input, a.index, 0x820a6d07cc13ac86), h)
 end
 function Base.:(==)(a::BoundFetchIndexPattern, b::BoundFetchIndexPattern)
-    a === b || a.input == b.input && a.index == b.index
+    a.input == b.input && a.index == b.index
 end
 
 # Fetch a subsequence at a given range of the input into a temporary.
@@ -223,7 +226,7 @@ function Base.hash(a::BoundFetchRangePattern, h::UInt64)
     hash((a.input, a.first_index, a.from_end, 0x7aea7756428a1646), h)
 end
 function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
-    a === b || a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
+    a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
 end
 
 # Compute the length of the input (tuple or array)
@@ -236,7 +239,7 @@ function Base.hash(a::BoundFetchLengthPattern, h::UInt64)
     hash((a.input, 0xa7167fae5a24c457), h)
 end
 function Base.:(==)(a::BoundFetchLengthPattern, b::BoundFetchLengthPattern)
-    a === b || a.input == b.input
+    a.input == b.input
 end
 
 # Preserve the current binding of the user variable into a fixed variable-specific temp.
@@ -252,5 +255,5 @@ function Base.hash(a::BoundFetchBindingPattern, h::UInt64)
     hash((a.input, a.variable, 0x53f0f6a137a891d8), h)
 end
 function Base.:(==)(a::BoundFetchBindingPattern, b::BoundFetchBindingPattern)
-    a === b || a.input == b.input && a.variable == b.variable
+    a.input == b.input && a.variable == b.variable
 end
