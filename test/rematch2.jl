@@ -403,13 +403,15 @@ file = Symbol(@__FILE__)
         end
     end
 
-    @testset "warn for unreachable cases" begin
-        let line = (@__LINE__) + 4
-            @test_warn(
-                "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
-                # Test macros remove line number nodes, so we can only get the start of it
-                @eval @match2 Foo(1, 2) begin; Foo(_, _) => 1; Foo(1, 2) => 2; end
-                )
+    if VERSION >= v"1.8"
+        @testset "warn for unreachable cases" begin
+            let line = (@__LINE__) + 4
+                @test_warn(
+                    "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
+                    # Test macros remove line number nodes, so we can only get the start of it
+                    @eval @match2 Foo(1, 2) begin; Foo(_, _) => 1; Foo(1, 2) => 2; end
+                    )
+            end
         end
     end
 
