@@ -18,6 +18,9 @@ struct CasePartialResult
     # Its location for error reporting purposes
     location::LineNumberNode
 
+    # Its source for error reporting
+    pattern_source
+
     # The set of remaining operations required to perform the match.
     # In this state, some operations may have already been done, and they
     # are removed from the bound pattern.  When the bound pattern is simply
@@ -35,11 +38,12 @@ struct CasePartialResult
     function CasePartialResult(
         case_number::Int,
         location::LineNumberNode,
+        pattern_source,
         pattern::BoundPattern,
         assigned::ImmutableDict{Symbol, Symbol},
         result_expression::Any)
         _hash = hash((case_number, pattern, assigned), 0x1cdd9657bfb1e645)
-        new(case_number, location, pattern, assigned, result_expression, _hash)
+        new(case_number, location, pattern_source, pattern, assigned, result_expression, _hash)
     end
 end
 function with_pattern(
@@ -48,6 +52,7 @@ function with_pattern(
     CasePartialResult(
         case.case_number,
         case.location,
+        case.pattern_source,
         new_pattern,
         case.assigned,
         case.result_expression)
@@ -328,7 +333,7 @@ function bind_case(
     case_number::Int,
     location::LineNumberNode,
     case,
-    state::BinderState)
+    state::BinderState)::CasePartialResult
     if !(@capture(case, pattern_ => result_))
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     end
@@ -336,23 +341,30 @@ function bind_case(
     (bound_pattern, assigned) = bind_pattern!(
         location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
     (result0, assigned0) = subst_patvars(result, assigned)
-    return CasePartialResult(case_number, location, bound_pattern, assigned0, result0)
+    return CasePartialResult(case_number, location, pattern, bound_pattern, assigned0, result0)
 end
 
 #
 # Build the state machine and return its entry point.
 #
-function build_state_machine(value, source_cases::Vector{Any}, location::LineNumberNode, state::BinderState)::CodePoint
+function build_state_machine_core(
+    value,
+    source_cases::Vector{Any},
+    location::LineNumberNode,
+    state::BinderState)::CodePoint
     cases = CasePartialResult[]
     for case in source_cases
         if case isa LineNumberNode
             location = case
         else
-            case = bind_case(length(cases) + 1, location, case, state)
-            case = simplify(case, state)
-            push!(cases, case)
+            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, state)
+            bound_case = simplify(bound_case, state)
+            push!(cases, bound_case)
         end
     end
+
+    # Track the set of reachable cases (by index)
+    reachable::Set{Int} = Set{Int}()
 
     # Make an entry point for the state machine
     entry = CodePoint(cases)
@@ -364,6 +376,9 @@ function build_state_machine(value, source_cases::Vector{Any}, location::LineNum
         if code.action isa Nothing
             set_next!(code, state)
             @assert !(code.action isa Nothing)
+            if code.action isa CasePartialResult
+                push!(reachable, code.action.case_number)
+            end
             next = code.next
             @assert !(next isa Nothing)
             succ = successors(code)
@@ -382,6 +397,15 @@ function build_state_machine(value, source_cases::Vector{Any}, location::LineNum
             ensure_label!(code)
         end
         @assert !(code.action isa Nothing)
+    end
+
+    # Warn if there were any unreachable cases
+    for i in 1:length(cases)
+        if !(i in reachable)
+            case = cases[i]
+            loc = case.location
+            @warn("$(loc.file):$(loc.line): Case $(case.case_number): `$(case.pattern_source) =>` is not reachable.")
+        end
     end
 
     entry
@@ -463,7 +487,7 @@ function build_state_machine(location::LineNumberNode, mod::Module, value, body)
 
     input_variable::Symbol = gensym("input_value")
     state = BinderState(mod, input_variable)
-    entry = build_state_machine(value, source_cases, location, state)
+    entry = build_state_machine_core(value, source_cases, location, state)
 
     return (entry, state)
 end
@@ -496,11 +520,17 @@ end
 # For debugging purposes, these macros print the state machine.
 macro match2_dump_states(io, value, body)
     (entry, state) = build_state_machine(__source__, __module__, value, body)
-    esc(:($dumpall($io, $entry, $state)))
+    esc(quote
+        $dumpall($io, $entry, $state)
+        $(count_states(entry))
+        end)
 end
 macro match2_dump_states(value, body)
     (entry, state) = build_state_machine(__source__, __module__, value, body)
-    esc(:($dumpall($stdout, $entry, $state)))
+    esc(quote
+        $dumpall($stdout, $entry, $state)
+        $(count_states(entry))
+        end)
 end
 
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)

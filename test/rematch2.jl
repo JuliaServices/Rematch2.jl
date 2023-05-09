@@ -130,7 +130,6 @@ end
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) => 1
         Foo(_, _) => 2
-        Foo(1, 6) => 3
         _ => 4
     end) == 6
 end
@@ -146,7 +145,6 @@ end
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) => x
         Foo(_, _) => 2
-        Foo(1, 6) => 3
         _ => 4
     end) == 7
 end
@@ -155,14 +153,13 @@ end
     # 1. Test for type Foo
     # 2. Fetch first field
     # 3. Fetch second field
-    # 4. Compare against 1
+    # 4. Compare against first field
     # 5. Success x!
     # 6. Success 2!
     # 7. Success 4!
     @test (Rematch2.@match2_count_states some_value begin
-        Foo(1, x) => x
+        Foo(x, x) => x
         Foo(_, _) => 2
-        Foo(1, 6) => 3
         _ => 4
     end) == 7
 end
@@ -403,6 +400,16 @@ file = Symbol(@__FILE__)
                 @test e isa ErrorException
                 @test startswith(e.msg, "$file:$line: Unrecognized @match2 case syntax: `2 + 2 =")
             end
+        end
+    end
+
+    @testset "warn for unreachable cases" begin
+        let line = (@__LINE__) + 4
+            @test_warn(
+                "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
+                # Test macros remove line number nodes, so we can only get the start of it
+                @eval @match2 Foo(1, 2) begin; Foo(_, _) => 1; Foo(1, 2) => 2; end
+                )
         end
     end
 

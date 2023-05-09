@@ -1,9 +1,9 @@
 module Rematch2Tests
 
-import Rematch2: @match, @match2, MatchFailure, Rematch2
+using Rematch2: @match, @match2, MatchFailure, Rematch2
 using ReTest
-import Random
-import MacroTools
+using Random
+using MacroTools: MacroTools
 
 include("utils.jl")
 include("rematch.jl")
