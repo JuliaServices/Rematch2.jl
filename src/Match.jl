@@ -2,8 +2,8 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     @capture(expr, pattern_ = value_) ||
         error(string("Unrecognized @match syntax: ", expr))
 
-    input_variable::Symbol = gensym("input_value")
-    state = BinderState(mod, input_variable)
+    state = BinderState(mod)
+    input_variable::Symbol = state.input_variable
     (bound_pattern, assigned) = bind_pattern!(
         location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
 

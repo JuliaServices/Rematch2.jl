@@ -15,6 +15,7 @@ macro print_expand(x)
             d = MacroTools.alias_gensyms(c)
             # println("alias_gensyms:")
             println(d)
+            $(esc(x))
         end
     end
 end

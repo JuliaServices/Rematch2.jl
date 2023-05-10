@@ -1,8 +1,10 @@
 
+#
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
 # and also during code generation, since it holds some of the state required during code
 # generation (such as assertions and assignments)
+#
 struct BinderState
     # The module containing the pattern, in which types appearing in the
     # pattern should be bound.
@@ -28,25 +30,82 @@ struct BinderState
     # A counter used to dispense unique integers to make prettier gensyms
     gensyms::Vector{Symbol}
 
-    function BinderState(mod::Module, input_variable::Symbol)
+    function BinderState(mod::Module)
         new(
             mod,
-            input_variable,
+            gensym("input_value"),
             Dict{BoundFetchPattern, Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
-            Vector{Any}(),
+            Vector{Symbol}(),
             Dict(),
-            Symbol[]
-        )
+            Any[]
+            )
     end
 end
-
 function gensym(base::String, state::BinderState)::Symbol
     s = gensym("$(base)_$(length(state.gensyms))")
     push!(state.gensyms, s)
     s
 end
 gensym(base::String) = Base.gensym(base)
+
+#
+# Pretty-printing utilities helpful for displaying the state machine
+#
+pretty(io::IO, p::BoundPattern, state::BinderState) = pretty(io, p)
+function pretty(io::IO, p::BoundFetchPattern, state::BinderState)
+    temp = get_temp(state, p)
+    pretty(io, temp)
+    print(io, " := ")
+    pretty(io, p)
+end
+function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, state::BinderState)
+    op = (p isa BoundOrPattern) ? "||" : "&&"
+    print(io, "(")
+    first = true
+    for sp in p.subpatterns
+        first || print(io, " ", op, " ")
+        first = false
+        pretty(io, sp, state)
+    end
+    print(io, ")")
+end
+function pretty(io::IO, s::Symbol)
+    print(io, pretty_name(s))
+end
+function pretty_name(s::Symbol)
+    s = string(s)
+    if startswith(s, "##")
+        string("«", simple_name(s), "»")
+    else
+        s
+    end
+end
+struct FrenchName; s::Symbol; end
+Base.show(io::IO, x::FrenchName) = print(io, pretty_name(x.s))
+function pretty(io::IO, expr::Expr)
+    b = MacroTools.prewalk(MacroTools.rmlines, expr)
+    c = MacroTools.prewalk(MacroTools.unblock, b)
+    print(io, MacroTools.postwalk(c) do var
+        (var isa Symbol) ? FrenchName(var) : var
+    end)
+end
+
+#
+# Get the "base" name of a symbol (remove synthetic ## additions)
+#
+function simple_name(s::Symbol)
+    simple_name(string(s))
+end
+function simple_name(n::String)
+    if startswith(n, "##")
+        n1 = n[3:length(n)]
+        last = findlast('#', n1)
+        (last isa Int) ? n1[1:(last-1)] : n1
+    else
+        n
+    end
+end
 
 #
 # Generate a fresh synthetic variable whose name hints at its purpose.
@@ -68,22 +127,6 @@ function gentemp(p::BoundFetchLengthPattern)
 end
 
 #
-# Get the "base" name of a symbol (remove synthetic ## additions)
-#
-function simple_name(s::Symbol)
-    simple_name(string(s))
-end
-function simple_name(n::String)
-    if startswith(n, "##")
-        n1 = n[3:length(n)]
-        last = findlast('#', n1)
-        (last isa Int) ? n1[1:(last-1)] : n1
-    else
-        n
-    end
-end
-
-#
 # The following are special bindings used to handle the point where
 # a disjunction merges when and two sides have different bindings.
 # In dataflow-analysis terms, this is represented by a phi function.
@@ -93,7 +136,7 @@ end
 const phi_prefix = "saved_"
 is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
 function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(() -> gentemp(p), state.assignments, p)
+    get!(state.assignments, p) do; gentemp(p); end
 end
 function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
     get!(state.assignments, p) do
@@ -114,10 +157,12 @@ function get_temp(state::BinderState, p::Symbol)
     end
 end
 
+#
 # We restrict the struct pattern to require something that looks like
 # a type name before the open paren.  This improves the diagnostics
 # for error cases like `(a + b)`, which produces an analogous Expr node
 # but with `+` as the operator.
+#
 is_possible_type_name(t) = false
 is_possible_type_name(t::Symbol) = Base.isidentifier(t)
 function is_possible_type_name(t::Expr)
@@ -219,10 +264,8 @@ function bind_pattern!(
                 end
             end
 
-            # TODO: track the field type if it was declared
-            fetch = BoundFetchFieldPattern(location, pattern_source, input, field_name)
-            push!(patterns, fetch)
-            field_temp = get_temp(state, fetch)
+            field_temp = push_pattern!(patterns, state,
+                BoundFetchFieldPattern(location, pattern_source, input, field_name))
             bound_subpattern, assigned = bind_pattern!(
                 location, pattern_source, field_temp, state, assigned)
             push!(patterns, bound_subpattern)
@@ -280,15 +323,9 @@ function bind_pattern!(
         push!(patterns, pattern0)
         len = length(subpatterns)
 
-        ### TODO: make this more dry. Currently we repeat
-        ###    fetch_foo = Fetch...(...)
-        ###    foo_temp = get_temp(state, fetch_foo)
-        ###    push!(patterns, fetch_foo)
-
         # produce a check that the length of the input is sufficient
-        fetch_length = BoundFetchLengthPattern(location, source, input)
-        length_temp = get_temp(state, fetch_length)
-        push!(patterns, fetch_length)
+        length_temp = push_pattern!(patterns, state,
+            BoundFetchLengthPattern(location, source, input))
         check_length =
             if splat_count != 0
                 BoundRelationalTestPattern(
@@ -306,18 +343,15 @@ function bind_pattern!(
                 @assert length(subpattern.args) == 1
                 @assert !seen_splat
                 seen_splat = true
-                fetch_range = BoundFetchRangePattern(
-                    location, subpattern, input, i, len-i)
-                push!(patterns, fetch_range)
-                range_temp = get_temp(state, fetch_range)
+                range_temp = push_pattern!(patterns, state,
+                    BoundFetchRangePattern(location, subpattern, input, i, len-i))
                 patterni, assigned = bind_pattern!(
                     location, subpattern.args[1], range_temp, state, assigned)
                 push!(patterns, patterni)
             else
                 index = seen_splat ? (i - len - 1) : i
-                fetch_index = BoundFetchIndexPattern(location, subpattern, input, index)
-                push!(patterns, fetch_index)
-                index_temp = get_temp(state, fetch_index)
+                index_temp = push_pattern!(patterns, state,
+                    BoundFetchIndexPattern(location, subpattern, input, index))
                 patterni, assigned = bind_pattern!(
                     location, subpattern, index_temp, state, assigned)
                 push!(patterns, patterni)
@@ -328,7 +362,6 @@ function bind_pattern!(
     elseif @capture(source, subpattern_ where guard_)
         # guard
         pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
-        guard0, assigned0 = subst_patvars(guard, assigned)
         pattern1 = shred_where_clause(guard, false, location, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
@@ -423,7 +456,6 @@ end
 #
 function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
     new_assigned = ImmutableDict{Symbol, Symbol}()
-    # postwalk(f, x) = walk(x, x -> postwalk(f, x), f)
     new_expr = MacroTools.postwalk(expr) do patvar
         if patvar isa Symbol
             tmpvar = get(assigned, patvar, nothing)
@@ -431,6 +463,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
+                # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end
         end

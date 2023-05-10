@@ -31,8 +31,8 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
         error("$(location.file):$(location.line): Unrecognized @match block syntax: `$match`.")
     end
 
-    input_variable = gensym("input_value")
-    state = BinderState(mod, input_variable)
+    state = BinderState(mod)
+    input_variable::Symbol = state.input_variable
     cases = MatchCaseResult[]
 
     for case in match.args

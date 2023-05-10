@@ -109,6 +109,12 @@ end
     end
 end
 
+#
+# To print the state machines shown in comments below, replace @match2_count_states
+# with @match2_dump and run the test.  To show the full details of how the state
+# machine was computed, try @match2_dumpall.
+#
+
 @testset "test for state machine optimizations 1" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
