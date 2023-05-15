@@ -11,6 +11,9 @@ function handle_match_case(
     case,
     state::BinderState)
     assigned = ImmutableDict{Symbol, Symbol}()
+    if case isa Expr && case.head == :macrocall
+        case = macroexpand(state.mod, case, recursive=true)
+    end
     if @capture(case, pattern_ => result_)
         bound_pattern, assigned = bind_pattern!(
             location, pattern, input_variable, state, assigned)

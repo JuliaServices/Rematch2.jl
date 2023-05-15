@@ -325,6 +325,9 @@ function bind_case(
     location::LineNumberNode,
     case,
     state::BinderState)::CasePartialResult
+    if case isa Expr && case.head == :macrocall
+        case = macroexpand(state.mod, case, recursive=false)
+    end
     if !(@capture(case, pattern_ => result_))
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     end
