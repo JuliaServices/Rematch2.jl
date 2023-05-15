@@ -299,7 +299,8 @@ function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, locati
 
     # Search for constructor methods that have the correct number of parameters,
     # no keyword parameters, and are not varargs.
-    meths = filter(m -> !m.isva && length(Base.kwarg_decl(m))==0, methods(type))
+    meths = Method[methods(type)...]
+    meths = filter(m -> !m.isva && length(Base.kwarg_decl(m))==0, meths)
     # drop the implicit var"#self#" argument
     argnames = map(m -> dropfirst(Base.method_argnames(m)), meths)
     # narrow to arg lists of the correct length where all parameter names correspond to members
