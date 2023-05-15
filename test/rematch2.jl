@@ -110,23 +110,23 @@ end
 end
 
 @testset "test for state machine optimizations 1" begin
-    # 1. Test for type Foo
-    # 2. Fetch second field
-    # 3. Compare against 2
-    # 4. Success!
-    # 5. Failure!
+    # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
+    # State 2 FETCH «input_value.y» := «input_value».y
+    # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_0»)
+    # State 4 MATCH 1 with value 1
+    # State 5 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) => 1
     end) == 5
 end
 
 @testset "test for state machine optimizations 2" begin
-    # 1. Test for type Foo
-    # 2. Fetch second field
-    # 3. Compare against 2
-    # 4. Success 1!
-    # 5. Success 2!
-    # 6. Success 4!
+    # State 1 TEST «input_value» isa Foo ELSE: State 6 («label_0»)
+    # State 2 FETCH «input_value.y» := «input_value».y
+    # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_1»)
+    # State 4 MATCH 1 with value 1
+    # State 5 («label_1») MATCH 2 with value 2
+    # State 6 («label_0») MATCH 3 with value 4
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) => 1
         Foo(_, _) => 2
@@ -135,13 +135,13 @@ end
 end
 
 @testset "test for state machine optimizations 3" begin
-    # 1. Test for type Foo
-    # 2. Fetch first field
-    # 3. Fetch second field
-    # 4. Compare against 2
-    # 5. Success x!
-    # 6. Success 2!
-    # 7. Success 4!
+    # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == 2 ELSE: State 6 («label_1»)
+    # State 5 MATCH 1 with value (identity)(«input_value.x»)
+    # State 6 («label_1») MATCH 2 with value 2
+    # State 7 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) => x
         Foo(_, _) => 2
@@ -150,13 +150,13 @@ end
 end
 
 @testset "test for state machine optimizations 4" begin
-    # 1. Test for type Foo
-    # 2. Fetch first field
-    # 3. Fetch second field
-    # 4. Compare against first field
-    # 5. Success x!
-    # 6. Success 2!
-    # 7. Success 4!
+    # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == «input_value.x» ELSE: State 6 («label_1»)
+    # State 5 MATCH 1 with value (identity)(«input_value.x»)
+    # State 6 («label_1») MATCH 2 with value 2
+    # State 7 («label_0») MATCH 3 with value 4
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, x) => x
         Foo(_, _) => 2
@@ -165,6 +165,57 @@ end
 end
 
 file = Symbol(@__FILE__)
+
+@testset "infer positional parameters from constructors 1" begin
+    # struct T207a
+    #     x; y; z
+    #     T207a(x, y) = new(x, y, x)
+    # end
+    r = @match2 T207a(1, 2) begin
+        T207a(x, y) => x
+    end
+    @test r == 1
+    r = @match2 T207a(1, 2) begin
+        T207a(x, y) => y
+    end
+    @test r == 2
+end
+
+@testset "infer positional parameters from constructors 2" begin
+    # struct T207b
+    #     x; y; z
+    #     T207b(x, y; z = x) = new(x, y, z)
+    # end
+    let line = 0
+        try
+            line = (@__LINE__) + 2
+            @eval @match2 T207b(1, 2) begin
+                T207b(x, y) => 1
+            end
+            @test false
+        catch ex
+            @test ex isa LoadError
+            e = ex.error
+            @test e isa ErrorException
+            @test e.msg == "$file:$line: Cannot infer which 2 of the 3 fields to match from any positional constructor for `$T207b`."
+        end
+    end
+end
+
+@testset "infer positional parameters from constructors 3" begin
+    # struct T207c
+    #     x; y; z
+    # end
+    # T207c(x, y) = T207c(x, y, x)
+    r = @match2 T207c(1, 2) begin
+        T207c(x, y) => x
+    end
+    @test r == 1
+    r = @match2 T207c(1, 2) begin
+        T207c(x, y) => y
+    end
+    @test r == 2
+end
 
 @testset "diagnostics produced are excellent" begin
 
@@ -281,7 +332,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Pattern field count is 3 expected 2."
+                @test e.msg == "$file:$line: The type `$Foo` has 2 fields but the pattern matches 3 fields."
             end
         end
     end
@@ -298,7 +349,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Type `Main.Rematch2Tests.Foo` has no field `z`."
+                @test e.msg == "$file:$line: Type `$Foo` has no field `z`."
             end
         end
     end
