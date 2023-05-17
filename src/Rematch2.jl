@@ -2,7 +2,7 @@ module Rematch2
 
 export @match, @match2, MatchFailure, @match_return, @match_fail
 
-using MacroTools: MacroTools, @capture
+using MacroTools: MacroTools
 using Base: ImmutableDict
 
 struct MatchFailure <: Exception

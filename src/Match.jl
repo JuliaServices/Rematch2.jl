@@ -1,6 +1,8 @@
 function handle_match_eq(location::LineNumberNode, mod::Module, expr)
-    @capture(expr, pattern_ = value_) ||
+    is_expr(expr, :(=), 2) ||
         error(string("Unrecognized @match syntax: ", expr))
+    pattern = expr.args[1]
+    value = expr.args[2]
 
     input_variable::Symbol = gensym("input_value")
     state = BinderState(mod, input_variable)
