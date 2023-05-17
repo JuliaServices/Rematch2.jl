@@ -81,20 +81,3 @@ struct App <: Term
     f::Term
     v::Term
 end
-
-struct T207a
-    x; y; z
-    T207a(x, y) = new(x, y, x)
-end
-
-struct T207b
-    x; y; z
-    T207b(x, y; z = x) = new(x, y, z)
-end
-
-struct T207c
-    x; y; z
-end
-T207c(x, y) = T207c(x, y, x)
-
-@enum Color Yellow Green Blue

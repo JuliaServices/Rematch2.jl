@@ -4,7 +4,52 @@
 # expansion of the @match2 macro so we can use the known bindings
 # of types to generate more efficient code.
 
+struct T207a
+    x; y; z
+    T207a(x, y) = new(x, y, x)
+end
+
+struct T207b
+    x; y; z
+    T207b(x, y; z = x) = new(x, y, z)
+end
+
+struct T207c
+    x; y; z
+end
+T207c(x, y) = T207c(x, y, x)
+
+@enum Color Yellow Green Blue
+
+macro casearm1(pattern, value)
+    esc(:($pattern => $value))
+end
+
+macro casearm2(pattern, value)
+    esc(:(@casearm1 $pattern $value))
+end
+
 @testset "@rematch2 tests" begin
+
+@testset "Check that we can use macros that expand to the case" begin
+    f1(x) = @match2 x begin
+        @casearm1 (2, 1) 1
+        @casearm1 (1, 2) 2
+        @casearm1 _ 3
+    end
+    @test f1((2, 1)) == 1
+    @test f1((1, 2)) == 2
+    @test f1((3, 4)) == 3
+
+    f2(x) = @match2 x begin
+        @casearm2 (2, 1) 1
+        @casearm2 (1, 2) 2
+        @casearm2 _ 3
+    end
+    @test f2((2, 1)) == 1
+    @test f2((1, 2)) == 2
+    @test f2((3, 4)) == 3
+end
 
 @testset "enums" begin
     # @enum Color Yellow Green Blue
