@@ -332,6 +332,7 @@ function bind_case(
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     end
 
+    (pattern, result) = adjust_case_for_return_macro(state.mod, pattern, result)
     bound_pattern, assigned = bind_pattern!(
         location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
     result0, assigned0 = subst_patvars(result, assigned)
