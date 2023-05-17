@@ -6,8 +6,20 @@
 
 @testset "@rematch2 tests" begin
 
-    @testset "Assignments in the value DO leak out (when not using `let``)" begin
-        @match2 Foo(1, 2) begin
+@testset "enums" begin
+    # @enum Color Yellow Green Blue
+    f(c) = @match2 c begin
+        $Yellow => 1
+        $Green => 2
+        $Blue => 3
+    end
+    @test f(Yellow) == 1
+    @test f(Green) == 2
+    @test f(Blue) == 3
+end
+
+@testset "Assignments in the value DO leak out (when not using `let``)" begin
+    @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end

@@ -96,3 +96,5 @@ struct T207c
     x; y; z
 end
 T207c(x, y) = T207c(x, y, x)
+
+@enum Color Yellow Green Blue
