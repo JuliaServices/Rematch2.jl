@@ -8,6 +8,7 @@ using MacroTools: MacroTools
 include("utils.jl")
 include("rematch.jl")
 include("rematch2.jl")
+include("topological.jl")
 
 retest(Rematch2Tests)
 
