@@ -6,7 +6,7 @@
 
 @testset "@rematch2 tests" begin
 
-@testset "Assignments in the value DO leak out" begin
+@testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
@@ -16,7 +16,7 @@
     @test new_variable == 3
 end
 
-@testset "Assignments in the value not leak out if you use `let`" begin
+@testset "Assignments in the value do NOT leak out if you use `let`" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) => let
             new_variable = 3
@@ -26,7 +26,20 @@ end
     @test !(@isdefined new_variable)
 end
 
-@testset "Assignments in a where clause DO leak out" begin
+@testset "Assignments in the value do NOT leak out if you use `let`" begin
+    @match2 Foo(1, 2) begin
+        Foo(x, 3) => let # this match does not leak assigmments
+            new_variable = 3
+        end
+        Foo(x, 2) => begin # this match does leak assignments
+            new_variable = 4
+        end
+    end
+    @test !(@isdefined x)
+    @test new_variable == 4
+end
+
+@testset "Assignments in a where clause DO leak out (when not using `let`)" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) where begin
             new_variable = 3
@@ -37,7 +50,18 @@ end
     @test new_variable == 3
 end
 
-@testset "Assignments in the value do not leak out if you use `let`" begin
+@testset "Assignments in a where clause do NOT leak with let" begin
+    @match2 Foo(1, 2) begin
+        Foo(x, 2) where let
+            new_variable = 3
+            true
+        end => new_variable
+    end
+    @test !(@isdefined x)
+    @test !(@isdefined new_variable)
+end
+
+@testset "Assignments in the value do NOT leak out if you use `let`" begin
     @match2 Foo(1, 2) let
         Foo(x, 2) => begin
             new_variable = 3
