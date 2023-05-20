@@ -55,7 +55,7 @@ end
         Foo(x, 2) where let
             new_variable = 3
             true
-        end => new_variable
+        end => 13
     end
     @test !(@isdefined x)
     @test !(@isdefined new_variable)
