@@ -1,7 +1,7 @@
 name = "Rematch2"
 uuid = "351a7294-9038-49b6-b9cf-e076b05af63f"
 authors = ["RelationalAI"]
-version = "0.1.2"
+version = "0.2.1"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"

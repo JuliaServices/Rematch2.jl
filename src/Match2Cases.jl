@@ -92,7 +92,7 @@ end
 pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 pretty(io::IO, p::BoundEqualValueTestPattern) = print(io, p.input, " == ", p.value)
-pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, " ", p.relation, ", ", p.value)
+pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, " ", p.relation, " ", p.value)
 function pretty(io::IO, p::BoundWhereTestPattern)
     print(io, "where ")
     isempty(p.assigned) || pretty(io, p.assigned)
@@ -136,7 +136,14 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state
         BoundTruePattern(pattern.location, pattern.source)
     end
 end
-function simplify(pattern::BoundWhereTestPattern, required_temps::Set{Symbol}, state::BinderState)
+function simplify(pattern::Union{BoundWhereTestPattern}, required_temps::Set{Symbol}, state::BinderState)
+    for (v, t) in pattern.assigned
+        push!(required_temps, t)
+    end
+    pattern
+end
+function simplify(pattern::Union{BoundEqualValueTestPattern}, required_temps::Set{Symbol}, state::BinderState)
+    push!(required_temps, pattern.input)
     for (v, t) in pattern.assigned
         push!(required_temps, t)
     end
@@ -320,16 +327,17 @@ function bind_case(
     end
 
     (bound_pattern, assigned) = bind_pattern!(
-        location, pattern, state.input_variable, state, ImmutableDict{Symbol,Symbol}())
-    return CasePartialResult(case_number, location, bound_pattern, assigned, result)
+        location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
+    (result0, assigned0) = subst_patvars(result, assigned)
+    return CasePartialResult(case_number, location, bound_pattern, assigned0, result0)
 end
 
 #
 # Build the state machine and return its entry point.
 #
-function build_state_machine(value, match, location::LineNumberNode, state::BinderState)::CodePoint
+function build_state_machine(value, source_cases::Vector{Any}, location::LineNumberNode, state::BinderState)::CodePoint
     cases = CasePartialResult[]
-    for case in match.args
+    for case in source_cases
         if case isa LineNumberNode
             location = case
         else
@@ -338,8 +346,11 @@ function build_state_machine(value, match, location::LineNumberNode, state::Bind
             push!(cases, case)
         end
     end
+
+    # Make an entry point for the state machine
     entry = CodePoint(cases)
 
+    # Build the state machine with the given entry point
     work_queue = Set{CodePoint}([entry])
     while !isempty(work_queue)
         code = pop!(work_queue)
@@ -369,10 +380,11 @@ function build_state_machine(value, match, location::LineNumberNode, state::Bind
     entry
 end
 
-function generate_code(entry::CodePoint, value, state::BinderState)
+# Generate all of the code given the entry point
+function generate_code(entry::CodePoint, value, location::LineNumberNode, state::BinderState)
     result_variable = gensym("match_result")
     result_label = gensym("completed")
-    emit = Any[:($(state.input_variable) = $(esc(value)))]
+    emit = Any[location, :($(state.input_variable) = $value)]
     togen = CodePoint[entry]
     generated = Set{CodePoint}()
 
@@ -386,14 +398,11 @@ function generate_code(entry::CodePoint, value, state::BinderState)
         action = pc.action
         if action isa CasePartialResult
             # We've matched a pattern.
-            result = :($result_variable = $(esc(action.result_expression)))
-            if !isempty(action.assigned)
-                result = Expr(:let, Expr(:block, assignments(action.assigned)...), result)
-            end
             push!(emit, action.location)
-            push!(emit, result)
+            push!(emit, :($result_variable = $(action.result_expression)))
             push!(emit, :(@goto $result_label))
         elseif action isa BoundFetchPattern
+            push!(emit, action.location)
             push!(emit, code(action, state))
             (next::CodePoint,) = pc.next
             if next in generated
@@ -407,6 +416,7 @@ function generate_code(entry::CodePoint, value, state::BinderState)
                 push!(togen, next)
             end
         elseif action isa BoundTestPattern
+            push!(emit, action.location)
             (next_true, next_false) = pc.next
             @assert next_false.label isa Symbol
             push!(emit, :($(code(action, state)) || @goto $(next_false.label)))
@@ -428,20 +438,25 @@ function generate_code(entry::CodePoint, value, state::BinderState)
 
     push!(emit, :(@label $result_label))
     push!(emit, result_variable)
-    Expr(:let, Expr(:block, :($result_variable = $nothing)), Expr(:block, state.assertions..., emit...))
+    Expr(:block, state.assertions..., emit...)
 end
 
-function handle_match2_cases(location::LineNumberNode, mod::Module, value, match)
-    if (match isa Expr && match.head == :call && match.args[1] == :(=>))
+function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
+    if (body isa Expr && body.head == :call && body.args[1] == :(=>))
         # previous version of @match supports `@match(expr, pattern => value)`
-        match = Expr(:block, match)
-    elseif !(match isa Expr) || match.head != :block
-        error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$match`.")
+        body = Expr(:block, body)
+    end
+    if body isa Expr && body.head == :block
+        source_cases = body.args
+    elseif body isa Expr && body.head == :let && body.args[2] isa Expr && body.args[2].head == :block
+        source_cases = body.args[2].args
+    else
+        error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$body`.")
     end
 
     input_variable::Symbol = gensym("input_value")
     state = BinderState(mod, input_variable)
-    entry = build_state_machine(value, match, location, state)
+    entry = build_state_machine(value, source_cases, location, state)
 
     #
     # When diagnosing or optimizing the pattern-matching machinery, comment out the
@@ -451,7 +466,11 @@ function handle_match2_cases(location::LineNumberNode, mod::Module, value, match
     #
     # dumpall(entry, state)
 
-    generate_code(entry, value, state)
+    result = generate_code(entry, value, location, state)
+    if body.head == :let
+        result = Expr(:let, body.args[1], result)
+    end
+    esc(result)
 end
 
 next_action(pattern::BoundPattern) = pattern
@@ -466,7 +485,7 @@ function next_action(
     state::BinderState)::Union{CasePartialResult, BoundPattern, Expr}
     if isempty(code.cases)
         # cases have been exhausted.  Return code to throw a match failure.
-        return :($throw(MatchFailure($(state.input_variable))))
+        return :($throw($MatchFailure($(state.input_variable))))
     end
     first_case = code.cases[1]
     if first_case.pattern isa BoundTruePattern
