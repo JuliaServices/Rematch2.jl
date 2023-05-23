@@ -466,6 +466,22 @@ end
         end
     end
 
+    @testset "assignment to pattern variables not permitted" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 1 begin
+                    x => (x = 4)
+                end
+                @test false
+            catch e
+                @test e isa ErrorException
+                @test startswith(e.msg, "syntax: invalid assignment location")
+                @test endswith(e.msg, "around $file:$line")
+            end
+        end
+    end
+
 end
 
 # Tests inherited from Rematch below
