@@ -257,3 +257,16 @@ end
 function Base.:(==)(a::BoundFetchBindingPattern, b::BoundFetchBindingPattern)
     a.input == b.input && a.variable == b.variable
 end
+
+#
+# Pattern properties
+#
+
+# Pattern might not be true
+is_refutable(pattern::Union{BoundFetchPattern, BoundTruePattern}) = false
+is_refutable(pattern::Union{BoundTestPattern, BoundFalsePattern}) = true
+is_refutable(pattern::BoundAndPattern) = any(is_refutable, pattern.subpatterns)
+is_refutable(pattern::BoundOrPattern) = all(is_refutable, pattern.subpatterns)
+
+# Pattern is definitely true
+is_irrefutable(pattern::BoundPattern) = !is_refutable(pattern)
