@@ -3,11 +3,11 @@
 function topological_sort(roots::AbstractVector{N}, successors::Function) where { N }
     # Compute pred_counts, the number of predecessors of each node
     pred_counts = Dict{N, Int}()
-    counted = Set()
+    counted = Set{N}()
     to_count = Vector{N}(roots)
     while !isempty(to_count)
         node = pop!(to_count)
-        if node in counted; continue; end
+        node in counted && continue
         push!(counted, node)
         get!(pred_counts, node, 0)
         for succ::N in reverse(successors(node))
@@ -17,8 +17,9 @@ function topological_sort(roots::AbstractVector{N}, successors::Function) where 
     end
 
     # Prepare a ready set of nodes to output that have no predecessors
-    ready = collect(keys(filter(p -> p.second == 0, pred_counts)))
+    ready = [k for (k, v) in pred_counts if v == 0]
     result = N[]
+    sizehint!(result, length(pred_counts))
     while !isempty(ready)
         node::N = pop!(ready)
         push!(result, node)
@@ -27,18 +28,15 @@ function topological_sort(roots::AbstractVector{N}, successors::Function) where 
         for succ::N in reverse(successors(node))
             count = pred_counts[succ]
             @assert count > 0
-            count = count - 1
+            count -= 1
             pred_counts[succ] = count
-            if count == 0
-                push!(ready, succ)
-            end
+            count == 0 && push!(ready, succ)
         end
     end
 
     # all of the nodes should have been output by now.  Otherwise there was a cycle.
     if length(pred_counts) != length(result)
-        unprocessed = collect(keys(filter(p -> p.second != 0, pred_counts)))
-        error("graph had a cycle; ", map(n -> name(n), unprocessed))
+        error("graph had a cycle; ", map(n -> name(n), keys(pred_counts)))
     end
 
     result
