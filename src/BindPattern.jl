@@ -33,18 +33,18 @@ struct BinderState
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Any}(),
             Dict()
-            )
+        )
     end
 end
 
 function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(state.assignments, p) do; gensym(); end
+    get!(gensym, state.assignments, p)
 end
 function get_temp(state::BinderState, p::BoundFetchBindingPattern)
-    get!(state.assignments, p) do; get_temp(state, p.variable); end
+    get!(() -> get_temp(state, p.variable), state.assignments, p)
 end
 function get_temp(state::BinderState, p::Symbol)
-    get!(state.assignments, p) do; gensym(string("saved_", p)); end
+    get!(() -> gensym(string("saved_", p)), state.assignments, p)
 end
 
 # We restrict the struct pattern to require something that looks like
@@ -67,7 +67,7 @@ function bind_pattern!(
     state::BinderState,
     assigned::ImmutableDict{Symbol, Symbol})
 
-    if (source == :_)
+    if source == :_
         # wildcard pattern
         pattern = BoundTruePattern(location, source)
 
@@ -79,10 +79,10 @@ function bind_pattern!(
         pattern = BoundEqualValueTestPattern(
             location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
-    elseif (source isa Expr && source.head == :$)
+    elseif source isa Expr && source.head == :$
         # an interpolation
         interpolation = source.args[1]
-        (interpolation0, assigned0) = subst_patvars(interpolation, assigned)
+        interpolation0, assigned0 = subst_patvars(interpolation, assigned)
         pattern = BoundEqualValueTestPattern(
             location, interpolation, input, interpolation0, assigned0)
 
@@ -115,8 +115,8 @@ function bind_pattern!(
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
 
     elseif @capture(source, subpattern_::T_)
-        (pattern1, assigned) = bind_pattern!(location, :(::($T)), input, state, assigned)
-        (pattern2, assigned) = bind_pattern!(location, subpattern, input, state, assigned)
+        pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
+        pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
 
     elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
@@ -131,12 +131,12 @@ function bind_pattern!(
         end
 
         # bind type at macro expansion time
-        (pattern0, assigned) = bind_pattern!(location, :(::($T)), input, state, assigned)
+        pattern0, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
 
         # TODO: Instead of calling fieldnames, we should call a method that can be
-        # overridden, e.g. by the implementation of `@auto_hash_equals_cached`, so
+        # overridden (propertynames?), e.g. by the implementation of `@auto_hash_equals_cached`, so
         # that macros can add fields that are not visible to pattern-matching.
         field_names = fieldnames(bound_type)
 
@@ -166,7 +166,7 @@ function bind_pattern!(
             fetch = BoundFetchFieldPattern(location, pattern_source, input, field_name)
             push!(patterns, fetch)
             field_temp = get_temp(state, fetch)
-            (bound_subpattern, assigned) = bind_pattern!(
+            bound_subpattern, assigned = bind_pattern!(
                 location, pattern_source, field_temp, state, assigned)
             push!(patterns, bound_subpattern)
         end
@@ -176,15 +176,15 @@ function bind_pattern!(
     elseif @capture(source, subpattern1_ && subpattern2_) ||
           (@capture(source, f_(subpattern1_, subpattern2_)) && f == :&)
         # conjunction: either `(a && b)` or `(a & b)` where `a` and `b` are patterns.
-        (bp1, assigned) = bind_pattern!(location, subpattern1, input, state, assigned)
-        (bp2, assigned) = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned = bind_pattern!(location, subpattern1, input, state, assigned)
+        bp2, assigned = bind_pattern!(location, subpattern2, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[bp1, bp2])
 
     elseif @capture(source, subpattern1_ || subpattern2_) ||
           (@capture(source, f_(subpattern1_, subpattern2_)) && f == :|)
         # disjunction: either `(a || b)` or `(a | b)` where `a` and `b` are patterns.
-        (bp1, assigned1) = bind_pattern!(location, subpattern1, input, state, assigned)
-        (bp2, assigned2) = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned1 = bind_pattern!(location, subpattern1, input, state, assigned)
+        bp2, assigned2 = bind_pattern!(location, subpattern2, input, state, assigned)
 
         # compute the common assignments.
         both = intersect(keys(assigned1), keys(assigned2))
@@ -218,7 +218,7 @@ function bind_pattern!(
 
         # produce a check that the input is an array (or tuple)
         patterns = BoundPattern[]
-        base = (source.head == :vect) ? AbstractArray : Tuple
+        base = source.head == :vect ? AbstractArray : Tuple
         pattern0 = BoundTypeTestPattern(location, base, input, base)
         push!(patterns, pattern0)
         len = length(subpatterns)
@@ -253,7 +253,7 @@ function bind_pattern!(
                     location, subpattern, input, i, len-i)
                 push!(patterns, fetch_range)
                 range_temp = get_temp(state, fetch_range)
-                (patterni, assigned) = bind_pattern!(
+                patterni, assigned = bind_pattern!(
                     location, subpattern.args[1], range_temp, state, assigned)
                 push!(patterns, patterni)
             else
@@ -261,7 +261,7 @@ function bind_pattern!(
                 fetch_index = BoundFetchIndexPattern(location, subpattern, input, index)
                 push!(patterns, fetch_index)
                 index_temp = get_temp(state, fetch_index)
-                (patterni, assigned) = bind_pattern!(
+                patterni, assigned = bind_pattern!(
                     location, subpattern, index_temp, state, assigned)
                 push!(patterns, patterni)
             end
@@ -270,8 +270,8 @@ function bind_pattern!(
 
     elseif @capture(source, subpattern_ where guard_)
         # guard
-        (pattern0, assigned) = bind_pattern!(location, subpattern, input, state, assigned)
-        (guard0, assigned0) = subst_patvars(guard, assigned)
+        pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
+        guard0, assigned0 = subst_patvars(guard, assigned)
         pattern1 = BoundWhereTestPattern(location, guard, guard0, assigned0)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
@@ -290,7 +290,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
         if patvar isa Symbol
             tmpvar = get(assigned, patvar, nothing)
             if tmpvar isa Symbol
-                if !(patvar in keys(new_assigned))
+                if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
                 return :($identity($tmpvar))

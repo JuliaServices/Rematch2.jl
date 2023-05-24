@@ -1,11 +1,11 @@
 
 function assignments(assigned::ImmutableDict{Symbol, Symbol})
     # produce a list of assignments to be splatted into the caller
-    a = (:($patvar = $resultsym) for (patvar, resultsym) in assigned)
+    return (:($patvar = $resultsym) for (patvar, resultsym) in assigned)
 end
 
 # return the code needed for a pattern.
-function code(bound_pattern::BoundPattern, state::BinderState)
+function code(bound_pattern::BoundPattern, ::BinderState)
     location = bound_pattern.location
     error("$(location.file):$(location.line): `code` not implemented for `$(typeof(bound_pattern))`.")
 end
@@ -56,7 +56,9 @@ function code(
     state::BinderState)
     tempvar = state.assignments[bound_pattern]
     i = bound_pattern.index
-    if i < 0; i = :($length($(bound_pattern.input)) + $(i + 1)); end
+    if i < 0
+        i = :($length($(bound_pattern.input)) + $(i + 1))
+    end
     :($tempvar = $getindex($(bound_pattern.input), $i))
 end
 function code(bound_pattern::BoundFetchRangePattern, state::BinderState)

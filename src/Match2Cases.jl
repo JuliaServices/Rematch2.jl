@@ -67,11 +67,7 @@ function Base.:(==)(a::CasePartialResult, b::CasePartialResult)
         isequal(a.pattern, b.pattern) &&
         isequal(a.assigned, b.assigned)
 end
-function pretty(x)
-    io = IOBuffer()
-    pretty(io, x)
-    String(take!(io))
-end
+pretty(x) = sprint(pretty, x)
 function pretty(io::IO, case::CasePartialResult, state::BinderState)
     print(io, case.case_number, ": ")
     pretty(io, case.pattern, state)
@@ -80,12 +76,7 @@ function pretty(io::IO, case::CasePartialResult, state::BinderState)
 end
 function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
     print(io, "[")
-    first = true
-    for pair in d
-        first || print(io, ", ")
-        first = false
-        show(io, pair)
-    end
+    join(io, d, ", ")
     print(io, "]")
 end
 pretty(io::IO, p::BoundPattern, state::BinderState) = pretty(io, p)
@@ -141,15 +132,15 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state
         BoundTruePattern(pattern.location, pattern.source)
     end
 end
-function simplify(pattern::Union{BoundWhereTestPattern}, required_temps::Set{Symbol}, state::BinderState)
-    for (v, t) in pattern.assigned
+function simplify(pattern::BoundWhereTestPattern, required_temps::Set{Symbol}, state::BinderState)
+    for (_, t) in pattern.assigned
         push!(required_temps, t)
     end
     pattern
 end
-function simplify(pattern::Union{BoundEqualValueTestPattern}, required_temps::Set{Symbol}, state::BinderState)
+function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, state::BinderState)
     push!(required_temps, pattern.input)
-    for (v, t) in pattern.assigned
+    for (_, t) in pattern.assigned
         push!(required_temps, t)
     end
     pattern
@@ -338,9 +329,9 @@ function bind_case(
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     end
 
-    (bound_pattern, assigned) = bind_pattern!(
+    bound_pattern, assigned = bind_pattern!(
         location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
-    (result0, assigned0) = subst_patvars(result, assigned)
+    result0, assigned0 = subst_patvars(result, assigned)
     return CasePartialResult(case_number, location, pattern, bound_pattern, assigned0, result0)
 end
 
@@ -364,7 +355,7 @@ function build_state_machine_core(
     end
 
     # Track the set of reachable cases (by index)
-    reachable::Set{Int} = Set{Int}()
+    reachable = Set{Int}()
 
     # Make an entry point for the state machine
     entry = CodePoint(cases)
@@ -375,28 +366,28 @@ function build_state_machine_core(
         code = pop!(work_queue)
         if code.action isa Nothing
             set_next!(code, state)
-            @assert !(code.action isa Nothing)
+            @assert code.action !== nothing
             if code.action isa CasePartialResult
                 push!(reachable, code.action.case_number)
             end
             next = code.next
-            @assert !(next isa Nothing)
+            @assert next !== nothing
             succ = successors(code)
             for i in 1:length(succ)
                 push!(work_queue, succ[i])
                 # we will fall through to the true branch if possible and jump to
                 # the false branch.  So we need a label for the false side.
-                if i != 1; ensure_label!(succ[i]); end
+                i != 1 && ensure_label!(succ[i])
             end
         else
             # We will need a label because it has
             # two predecessors in the generated code, and one of them will
             # have to jump to it rather than falling through
             next = code.next
-            @assert !(next isa Nothing)
+            @assert next !== nothing
             ensure_label!(code)
         end
-        @assert !(code.action isa Nothing)
+        @assert code.action !== nothing
     end
 
     # Warn if there were any unreachable cases
@@ -421,7 +412,7 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
 
     while !isempty(togen)
         pc = pop!(togen)
-        if pc in generated; continue; end
+        pc in generated && continue
         push!(generated, pc)
         if pc.label isa Symbol
             push!(emit, :(@label $(pc.label)))
@@ -448,7 +439,7 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
             end
         elseif action isa BoundTestPattern
             push!(emit, action.location)
-            (next_true, next_false) = pc.next
+            next_true, next_false = pc.next
             @assert next_false.label isa Symbol
             push!(emit, :($(code(action, state)) || @goto $(next_false.label)))
             push!(togen, next_false)
@@ -473,7 +464,7 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
 end
 
 function build_state_machine(location::LineNumberNode, mod::Module, value, body)
-    if (body isa Expr && body.head == :call && body.args[1] == :(=>))
+    if body isa Expr && body.head == :call && body.args[1] == :(=>)
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
     end
@@ -485,7 +476,7 @@ function build_state_machine(location::LineNumberNode, mod::Module, value, body)
         error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$body`.")
     end
 
-    input_variable::Symbol = gensym("input_value")
+    input_variable = gensym("input_value")
     state = BinderState(mod, input_variable)
     entry = build_state_machine_core(value, source_cases, location, state)
 
@@ -494,7 +485,7 @@ end
 
 # For testing purposes, this macro permits the caller to determine the number of states
 macro match2_count_states(value, body)
-    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    entry, _ = build_state_machine(__source__, __module__, value, body)
     # We return a number into the caller's code.
     count_states(entry)
 end
@@ -504,7 +495,7 @@ function count_states(entry::CodePoint)
     total::Int = 0
     while !isempty(tocount)
         pc = pop!(tocount)
-        if pc in counted; continue; end
+        pc in counted && continue
         push!(counted, pc)
         total += 1
         if pc.next isa Tuple{CodePoint}
@@ -519,22 +510,22 @@ end
 
 # For debugging purposes, these macros print the state machine.
 macro match2_dump_states(io, value, body)
-    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    entry, state = build_state_machine(__source__, __module__, value, body)
     esc(quote
         $dumpall($io, $entry, $state)
         $(count_states(entry))
-        end)
+    end)
 end
 macro match2_dump_states(value, body)
-    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    entry, state = build_state_machine(__source__, __module__, value, body)
     esc(quote
         $dumpall($stdout, $entry, $state)
         $(count_states(entry))
-        end)
+    end)
 end
 
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
-    (entry, state) = build_state_machine(location, mod, value, body)
+    entry, state = build_state_machine(location, mod, value, body)
     result = generate_code(entry, value, location, state)
     if body.head == :let
         result = Expr(:let, body.args[1], result)
@@ -564,15 +555,15 @@ function next_action(
     return next_action(first_case.pattern)
 end
 function set_next!(code::CodePoint, state::BinderState)
-    @assert code.action isa Nothing
-    @assert code.next isa Nothing
+    @assert code.action === nothing
+    @assert code.next === nothing
 
     action::Union{CasePartialResult, BoundPattern, Expr} = next_action(code, state)
     next::Union{Tuple{}, Tuple{CodePoint}, Tuple{CodePoint, CodePoint}} =
         make_next(code, action, state)
     code.action = action
     code.next = next
-    @assert !(code.next isa Nothing)
+    @assert code.next !== nothing
 end
 
 function make_next(
@@ -588,7 +579,7 @@ function make_next(
     error("pattern cannot be the next action: $(typeof(action))")
 end
 function intern(code::CodePoint, state::BinderState)
-    @assert code.label isa Nothing
+    @assert code.label === nothing
     newcode = get!(state.intern, code, code)
     if newcode !== code
         ensure_label!(newcode)
@@ -660,14 +651,14 @@ function remove(action::BoundTestPattern, sense::Bool, pattern::BoundOrPattern):
         collect(BoundPattern, map(p -> remove(action, sense, p)::BoundPattern, pattern.subpatterns)))
 end
 function remove(action::BoundTestPattern, sense::Bool, pattern::BoundTestPattern)::BoundPattern
-    if (action == pattern)
+    if action == pattern
         BoundBoolPattern(pattern.location, pattern.source, sense)
     else
         pattern
     end
 end
 function remove(action::BoundTypeTestPattern, sense::Bool, pattern::BoundTypeTestPattern)::BoundPattern
-    if (action == pattern)
+    if action == pattern
         return BoundBoolPattern(pattern.location, pattern.source, sense)
     elseif action.input != pattern.input
         return pattern
