@@ -55,22 +55,12 @@ struct BoundEqualValueTestPattern <: BoundTestPattern
     input::Symbol
     value::Any  # the value that the input should be compared to using `isequal`
     assigned::ImmutableDict{Symbol, Symbol}
-    key::Union{Nothing, Symbol} # A key that can be used to force two patterns to be distinct
-end
-function BoundEqualValueTestPattern(
-        location::LineNumberNode,
-        source::Any,
-        input::Symbol,
-        value::Any,
-        assigned::ImmutableDict{Symbol, Symbol})
-    key = any(p -> is_phi(p.second), assigned) ? gensym("unique") : nothing
-    BoundEqualValueTestPattern(location, source, input, value, assigned, key)
 end
 function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
-    hash((a.input, a.value, a.key, 0x7e92a644c831493f), h)
+    hash((a.input, a.value, 0x7e92a644c831493f), h)
 end
 function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a.input == b.input && isequal(a.value, b.value) && a.key == b.key
+    a.input == b.input && isequal(a.value, b.value)
 end
 function pretty(io::IO, p::BoundEqualValueTestPattern)
     pretty(io, p.input)
@@ -115,7 +105,6 @@ function Base.:(==)(a::BoundWhereTestPattern, b::BoundWhereTestPattern)
     a.input == b.input && a.inverted == b.inverted
 end
 function pretty(io::IO, p::BoundWhereTestPattern)
-    print(io, "where ")
     p.inverted && print(io, "!")
     pretty(io, p.input)
 end
@@ -321,27 +310,21 @@ function pretty(io::IO, p::BoundFetchLengthPattern)
     print(io, ")")
 end
 
-# Preserve the value of the expression into a temp.
-# Used (1) to force the binding on both sides of an or-pattern to be the same, and
+# Preserve the value of the expression into a temp.  Used
+# (1) to force the binding on both sides of an or-pattern to be the same (a phi), and
 # (2) to load the value of a `where` clause.
 # The stored `value` has had substitutions (recorded in `assigned`) applied by the caller,
-# so that semantically equivalent values might be syntactically equivalent.  The key
-# is used (1) to select a name for the temp, and (2) to force distinct temps to be used
-# at join points (when any of the bindings in `assigned` are phi merge points)
+# so that semantically equivalent values might be syntactically equivalent.
+#
+# The key, if provided, will be used as the temp.  That is used to ensure every phi
+# is assigned a distinct temp (even if it is the same variable binding that is being
+# preserved).
 struct BoundFetchExpressionPattern <: BoundFetchPattern
     location::LineNumberNode
     source::Any
     value::Any    # value to be  preserved, e.g. previous binding of a variable
     assigned::ImmutableDict{Symbol, Symbol}
     key::Union{Nothing, Symbol}   # key to identify the temp, or user variable to be preserved
-end
-function BoundFetchExpressionPattern(
-    location::LineNumberNode,
-    source::Any,
-    value::Any,
-    assigned::ImmutableDict{Symbol, Symbol})
-    key = any(p -> is_phi(p.second), assigned) ? gensym("where") : nothing
-    BoundFetchExpressionPattern(location, source, value, assigned, key)
 end
 function Base.hash(a::BoundFetchExpressionPattern, h::UInt64)
     hash((a.value, a.key, 0x53f0f6a137a891d8), h)

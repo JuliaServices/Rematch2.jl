@@ -47,7 +47,7 @@ function gensym(base::String, state::BinderState)::Symbol
     push!(state.gensyms, s)
     s
 end
-gensym(base::String) = Base.gensym(base)
+gensym(base::String)::Symbol = Base.gensym(base)
 
 #
 # Pretty-printing utilities helpful for displaying the state machine
@@ -110,50 +110,35 @@ end
 #
 # Generate a fresh synthetic variable whose name hints at its purpose.
 #
-function gentemp(p::BoundFetchPattern)
+function gentemp(p)::Symbol
     error("not implemented: gentemp(::$(typeof(p)))")
 end
-function gentemp(p::BoundFetchFieldPattern)
+function gentemp(p::BoundFetchFieldPattern)::Symbol
     gensym(string(simple_name(p.input), ".", p.field_name))
 end
-function gentemp(p::BoundFetchIndexPattern)
+function gentemp(p::BoundFetchIndexPattern)::Symbol
     gensym(string(simple_name(p.input), "[", p.index, "]"))
 end
-function gentemp(p::BoundFetchRangePattern)
+function gentemp(p::BoundFetchRangePattern)::Symbol
     gensym(string(simple_name(p.input), "[", p.first_index, ":(length-", p.from_end, ")]"))
 end
-function gentemp(p::BoundFetchLengthPattern)
+function gentemp(p::BoundFetchLengthPattern)::Symbol
     gensym(string("length(", simple_name(p.input), ")"))
 end
 
 #
-# The following are special bindings used to handle the point where
-# a disjunction merges when and two sides have different bindings.
-# In dataflow-analysis terms, this is represented by a phi function.
-# This is a synthetic variable to hold the value that should be used
-# to hold the value after the merge point.
+# Get or create the temp for a fetch.
 #
-const phi_prefix = "saved_"
-is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
-function get_temp(state::BinderState, p::BoundFetchPattern)
+function get_temp(state::BinderState, p::BoundFetchPattern)::Symbol
     get!(state.assignments, p) do; gentemp(p); end
 end
-function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
+function get_temp(state::BinderState, p::BoundFetchExpressionPattern)::Symbol
     get!(state.assignments, p) do
         if p.key isa Symbol
-            sym = get_temp(state, p.key)
-            @assert is_phi(sym)
+            p.key
         else
-            sym = gensym("where", state)
+            gensym("where", state)
         end
-        sym
-    end
-end
-function get_temp(state::BinderState, p::Symbol)
-    get!(state.assignments, p) do
-        sym = gensym(string(phi_prefix, p), state)
-        @assert is_phi(sym)
-        sym
     end
 end
 
@@ -295,13 +280,15 @@ function bind_pattern!(
             if v1 == v2
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, v1)
             else
-                temp = get_temp(state, key)
+                # Every phi gets its own distinct variable.  We do not share them
+                # between patterns.
+                temp = gensym(string("phi_", key), state)
                 if v1 != temp
-                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), key)
+                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), temp)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
-                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), key)
+                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), temp)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
@@ -443,7 +430,7 @@ function shred_where_clause(
         return result_type(location, guard, BoundPattern[left, right])
     else
         (guard0, assigned0) = subst_patvars(guard, assigned)
-        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0)
+        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0, nothing)
         temp = get_temp(state, fetch)
         test = BoundWhereTestPattern(location, guard, temp, inverted)
         return BoundAndPattern(location, guard, BoundPattern[fetch, test])
