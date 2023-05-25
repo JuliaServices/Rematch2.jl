@@ -321,36 +321,6 @@ end
 dropfirst(a) = a[2:length(a)]
 
 #
-# Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
-# we push negation operators down.  This permits us to share the parts of a where clause
-# between different rules.
-#
-function shred_where_clause(
-    guard::Any,
-    inverted::Bool,
-    location::LineNumberNode,
-    state::BinderState,
-    assigned::ImmutableDict{Symbol, Symbol})::BoundPattern
-    if @capture(guard, !g_)
-        return shred_where_clause(g, !inverted, location, state, assigned)
-    elseif @capture(guard, g1_ && g2_) || @capture(guard, g1_ || g2_)
-        left = shred_where_clause(g1, inverted, location, state, assigned)
-        right = shred_where_clause(g2, inverted, location, state, assigned)
-        # DeMorgan's law:
-        #     `!(a && b)` => `!a || !b`
-        #     `!(a || b)` => `!a && !b`
-        result_type = (inverted == (guard.head == :&&)) ? BoundOrPattern : BoundAndPattern
-        return result_type(location, guard, BoundPattern[left, right])
-    else
-        (guard0, assigned0) = subst_patvars(guard, assigned)
-        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0)
-        temp = get_temp(state, fetch)
-        test = BoundWhereTestPattern(location, guard, temp, inverted)
-        return BoundAndPattern(location, guard, BoundPattern[fetch, test])
-    end
-end
-
-#
 # Replace each pattern variable reference with the temporary variable holding the
 # value that corresponds to that pattern variable.
 #
