@@ -159,7 +159,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: The type `$Foo` has 2 fields but the pattern matches 3 fields."
+                @test e.msg == "$file:$line: The type `$Foo` has 2 fields but the pattern expects 3 fields."
             end
         end
     end
