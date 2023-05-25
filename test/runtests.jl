@@ -8,6 +8,7 @@ using MacroTools: MacroTools
 include("utils.jl")
 include("rematch.jl")
 include("rematch2.jl")
+include("nontrivial.jl")
 include("topological.jl")
 include("match_return.jl")
 
