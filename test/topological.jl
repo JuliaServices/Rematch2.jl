@@ -8,8 +8,7 @@ function make_graph(data::Vector{Vector{T}}) where {T}
     for node in data
         succ[node[1]] = node[2:end]
     end
-    function successor(n)
-get(succ, n, T[])
+    successor(n) = get(succ, n, T[])
     return (successor, data[1][1])
 end
 
