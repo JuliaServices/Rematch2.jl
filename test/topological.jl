@@ -4,17 +4,12 @@ using Rematch2: topological_sort
 # and the name of successor nodes, construct a graph.  Return a successor
 # function and a root node, which is the first node in the data.
 function make_graph(data::Vector{Vector{T}}) where {T}
-    succ = Dict()
+    succ = Dict{T, Vector{T}}()
     for node in data
         succ[node[1]] = node[2:end]
     end
     function successor(n)
-        if n in keys(succ)
-            return succ[n]
-        else
-            return []
-        end
-    end
+get(succ, n, T[])
     return (successor, data[1][1])
 end
 
