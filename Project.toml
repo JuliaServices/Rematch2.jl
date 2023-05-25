@@ -5,7 +5,6 @@ version = "0.2.1"
 
 [deps]
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-ReTest = "e0db7c4e-2690-44b9-bad6-7687da720f89"
 
 [compat]
 MacroTools = "0.4, 0.5"
