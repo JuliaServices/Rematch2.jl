@@ -1,6 +1,6 @@
 # Compute a topological ordering of a set of nodes reachable from the given
 # roots by the given successor function.
-function topological_sort(roots::AbstractVector{N}, successors::Function) where { N }
+function topological_sort(successors::Function, roots::AbstractVector{N}) where { N }
     # Compute pred_counts, the number of predecessors of each node
     pred_counts = Dict{N, Int}()
     counted = Set{N}()
