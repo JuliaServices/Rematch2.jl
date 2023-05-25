@@ -282,7 +282,7 @@ end
 # Infer which fields to match in a positional struct pattern by inspecting the set
 # of constructors.  It would be nice to exclude constructors that have
 # required keyword parameters, but the Julia APIs offer no simple way to determine
-# which keyword parameters have defaults.  That's becasue keyword parameters without
+# which keyword parameters have defaults.  That's because keyword parameters without
 # defaults are just rewritten into keyword parameters with defaults that throw an
 # exception at runtime.  So we exclude functions that have any keyword parameters.
 # If that ends up being problematic, we'll revisit the strategy.
@@ -313,7 +313,7 @@ function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, locati
         # no unique constructor, but the correct number of fields exist; use them
         return members
     elseif len > length(members)
-        error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern matches $len fields.")
+        error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern expects $len fields.")
     else
         error("$(location.file):$(location.line): Cannot infer which $len of the $(length(members)) fields to match from any positional constructor for `$type`.")
     end
