@@ -130,23 +130,13 @@ function bind_pattern!(
             error("$(location.file):$(location.line): Pattern `$source` mixes named and positional arguments.")
         end
 
+        match_positionally = named_count == 0
+
         # bind type at macro expansion time
         pattern0, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
-
-        # TODO: Instead of calling fieldnames, we should call a method that can be
-        # overridden (propertynames?), e.g. by the implementation of `@auto_hash_equals_cached`, so
-        # that macros can add fields that are not visible to pattern-matching.
-        field_names = fieldnames(bound_type)
-
-        match_positionally = named_count == 0
-        if match_positionally
-            fieldcount = length(field_names)
-            if fieldcount != len
-                error("$(location.file):$(location.line): Pattern field count is $len expected $fieldcount.")
-            end
-        end
+        field_names::Tuple = infer_fieldnames(bound_type, len, match_positionally, location)
 
         for i in 1:len
             pat = subpatterns[i]
@@ -282,7 +272,58 @@ function bind_pattern!(
     return (pattern, assigned)
 end
 
-# (interpolation, assigned0) = subst_patvars(interpolation, assigned)
+function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
+    temp = get_temp(state, pat)
+    push!(patterns, pat)
+    temp
+end
+
+#
+# Infer which fields to match in a positional struct pattern by inspecting the set
+# of constructors.  It would be nice to exclude constructors that have
+# required keyword parameters, but the Julia APIs offer no simple way to determine
+# which keyword parameters have defaults.  That's because keyword parameters without
+# defaults are just rewritten into keyword parameters with defaults that throw an
+# exception at runtime.  So we exclude functions that have any keyword parameters.
+# If that ends up being problematic, we'll revisit the strategy.
+#
+function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, location::LineNumberNode)
+    members = try
+        fieldnames(type)
+    catch ex
+        error("$(location.file):$(location.line): Could not determine the field names of `$type`.")
+    end
+
+    # If we're matching by keyword, we permit the use of any declared fields.
+    match_positionally || return members
+
+    # Search for constructor methods that have the correct number of parameters,
+    # no keyword parameters, and are not varargs.
+    meths = Method[methods(type)...]
+    meths = filter(m -> !m.isva && length(Base.kwarg_decl(m))==0, meths)
+    # drop the implicit var"#self#" argument
+    argnames = map(m -> dropfirst(Base.method_argnames(m)), meths)
+    # narrow to arg lists of the correct length where all parameter names correspond to members
+    argnames = unique(filter(l -> length(l) == len && all(n -> n in members, l), argnames))
+
+    if length(argnames) == 1
+        # found a uniquely satisfying order for member names
+        return (argnames[1]...,)
+    elseif len == length(members)
+        # no unique constructor, but the correct number of fields exist; use them
+        return members
+    elseif len > length(members)
+        error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern expects $len fields.")
+    else
+        error("$(location.file):$(location.line): Cannot infer which $len of the $(length(members)) fields to match from any positional constructor for `$type`.")
+    end
+end
+dropfirst(a) = a[2:length(a)]
+
+#
+# Replace each pattern variable reference with the temporary variable holding the
+# value that corresponds to that pattern variable.
+#
 function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
     new_assigned = ImmutableDict{Symbol, Symbol}()
     # postwalk(f, x) = walk(x, x -> postwalk(f, x), f)
@@ -293,7 +334,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
-                return :($identity($tmpvar))
+                return Expr(:block, tmpvar)
             end
         end
         patvar

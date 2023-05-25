@@ -159,7 +159,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Pattern field count is 3 expected 2."
+                @test e.msg == "$file:$line: The type `$Foo` has 2 fields but the pattern expects 3 fields."
             end
         end
     end
@@ -176,7 +176,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Type `Main.Rematch2Tests.Foo` has no field `z`."
+                @test e.msg == "$file:$line: Type `$Foo` has no field `z`."
             end
         end
     end
