@@ -364,7 +364,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
-                return :($identity($tmpvar))
+                return Expr(:block, tmpvar)
             end
         end
         patvar
