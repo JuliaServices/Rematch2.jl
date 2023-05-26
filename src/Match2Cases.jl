@@ -299,7 +299,7 @@ function successors(c::CodePoint)::Vector{CodePoint}
     collect(c.next)
 end
 function reachable_states(root::CodePoint)::Vector{CodePoint}
-    topological_sort([root], successors)
+    topological_sort(successors, [root])
 end
 
 function dumpall(io::IO, root::CodePoint, state::BinderState)
