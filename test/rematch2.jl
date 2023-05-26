@@ -164,6 +164,64 @@ end
     end) == 7
 end
 
+@testset "test for sharing where clause conjuncts" begin
+    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
+    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 6 TEST where «where_0» ELSE: State 8 («label_5»)
+    # State 7 MATCH 1 with value 1
+    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
+    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 10 TEST where «where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
+    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
+    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 13 TEST where «where_1» ELSE: State 20 («label_2»)
+    # State 14 («label_6») MATCH 2 with value 2
+    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 16 TEST where «where_0» ELSE: State 20 («label_2»)
+    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 18 TEST where «where_1» ELSE: State 20 («label_2»)
+    # State 19 MATCH 3 with value 3
+    # State 20 («label_2») MATCH 4 with value 4
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) where f1(x)            => 1
+        Foo(1, y) where f2(y)            => 2
+        Foo(x, y) where (f1(x) && f2(y)) => 3
+        _                                => 4
+    end) == 20
+end
+
+@testset "test for sharing where clause disjuncts" begin
+    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
+    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 6 TEST where !«where_0» ELSE: State 8 («label_5»)
+    # State 7 MATCH 1 with value 1
+    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
+    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 10 TEST where !«where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
+    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
+    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 13 TEST where !«where_1» ELSE: State 20 («label_2»)
+    # State 14 («label_6») MATCH 2 with value 2
+    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 16 TEST where !«where_0» ELSE: State 20 («label_2»)
+    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 18 TEST where !«where_1» ELSE: State 20 («label_2»)
+    # State 19 MATCH 3 with value 3
+    # State 20 («label_2») MATCH 4 with value 5
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end) == 20
+end
+
 file = Symbol(@__FILE__)
 
 @testset "infer positional parameters from constructors 1" begin

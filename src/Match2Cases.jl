@@ -110,7 +110,7 @@ pretty(io::IO, p::BoundFetchFieldPattern) = print(io, p.input, ".", p.field_name
 pretty(io::IO, p::BoundFetchIndexPattern) = print(io, p.input, "[", p.index, "]")
 pretty(io::IO, p::BoundFetchRangePattern) = print(io, p.input, "[", p.first_index, ":(length(", p.input, ")-", p.from_end, ")]")
 pretty(io::IO, p::BoundFetchLengthPattern) = print(io, "length(", p.input, ")")
-pretty(io::IO, p::BoundFetchBindingPattern) = print(io, p.input)
+pretty(io::IO, p::BoundFetchExpressionPattern) = print(io, p.value)
 
 #
 # Simplify a pattern by removing fetch operations that are not used.
@@ -122,7 +122,7 @@ end
 function simplify(pattern::Union{BoundTruePattern, BoundFalsePattern}, required_temps::Set{Symbol}, state::BinderState)
     pattern
 end
-function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state::BinderState)
+function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
     temp = get_temp(state, pattern)
     if temp in required_temps
         pop!(required_temps, temp)
@@ -132,11 +132,17 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state
         BoundTruePattern(pattern.location, pattern.source)
     end
 end
-function simplify(pattern::BoundWhereTestPattern, required_temps::Set{Symbol}, state::BinderState)
-    for (_, t) in pattern.assigned
-        push!(required_temps, t)
+function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+    temp = get_temp(state, pattern)
+    if temp in required_temps
+        pop!(required_temps, temp)
+        for (v, t) in pattern.assigned
+            push!(required_temps, t)
+        end
+        pattern
+    else
+        BoundTruePattern(pattern.location, pattern.source)
     end
-    pattern
 end
 function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, state::BinderState)
     push!(required_temps, pattern.input)
