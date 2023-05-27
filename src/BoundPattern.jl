@@ -50,7 +50,7 @@ function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
     hash((a.input, a.value, a.assigned, 0x7e92a644c831493f), h)
 end
 function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a.input == b.input && a.value == b.value && a.assigned == b.assigned
+    a.input == b.input && isequal(a.value, b.value) && a.assigned == b.assigned
 end
 
 # A pattern that compares the input, which must be an Integer, using a Relational
