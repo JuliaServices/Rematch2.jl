@@ -166,7 +166,7 @@ end
 
 file = Symbol(@__FILE__)
 
-@testset "infer positional parameters from constructors 1" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 1" begin
     # struct T207a
     #     x; y; z
     #     T207a(x, y) = new(x, y, x)
@@ -181,7 +181,7 @@ file = Symbol(@__FILE__)
     @test r == 2
 end
 
-@testset "infer positional parameters from constructors 2" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 2" begin
     # struct T207b
     #     x; y; z
     #     T207b(x, y; z = x) = new(x, y, z)
@@ -197,22 +197,22 @@ end
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: Cannot infer which 2 of the 3 fields to match from any positional constructor for `$T207b`."
+            @test e.msg == "$file:$line: The type `$T207b` has 3 fields but the pattern expects 2 fields."
         end
     end
 end
 
-@testset "infer positional parameters from constructors 3" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 3" begin
     # struct T207c
     #     x; y; z
     # end
     # T207c(x, y) = T207c(x, y, x)
     r = @match2 T207c(1, 2) begin
-        T207c(x, y) => x
+        T207c(x, y, z) => x
     end
     @test r == 1
     r = @match2 T207c(1, 2) begin
-        T207c(x, y) => y
+        T207c(x, y, z) => y
     end
     @test r == 2
 end

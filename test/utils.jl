@@ -85,6 +85,7 @@ struct T207a
     x; y; z
     T207a(x, y) = new(x, y, x)
 end
+Rematch2.fieldnames(::Type{T207a}) = (:x, :y)
 
 struct T207b
     x; y; z
