@@ -20,6 +20,7 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/gafter/Rematch2.jl",
+    repo="github.com/gafter/Rematch2.jl.git",
     devbranch="main",
+    push_preview = true,
 )
