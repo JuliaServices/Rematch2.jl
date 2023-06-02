@@ -1,9 +1,9 @@
 # Rematch2 - Pattern-matching for Julia
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://gafter.github.io/Rematch2.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://gafter.github.io/Rematch2.jl/dev/)
-[![Build Status](https://github.com/gafter/Rematch2.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gafter/Rematch2.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/gafter/Rematch2.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/gafter/Rematch2.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/dev/)
+[![Build Status](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/JuliaServices/Rematch2.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaServices/Rematch2.jl)
 
 Pattern matching for Julia.  A rewrite of [`Rematch.jl`](https://github.com/RelationalAI-oss/Rematch.jl)
 that offers improved performance at runtime, additional pattern forms, and improved control of
