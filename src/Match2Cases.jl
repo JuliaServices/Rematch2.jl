@@ -1,4 +1,3 @@
-
 #
 # Bind a case, producing a case partial result.
 #
