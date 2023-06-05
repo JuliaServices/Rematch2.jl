@@ -85,10 +85,6 @@ mutable struct CodePoint
     # ordered by `case_number`.
     @_const cases::ImmutableVector{CasePartialResult}
 
-    # A label to produce in the code at entry to the code where
-    # this state is implemented, if one is needed.
-    label::Union{Nothing, Symbol}
-
     # The selected action to take from this state: either
     # - Nothing, before it has been computed, or
     # - Case whose tests have all passed, or
@@ -109,8 +105,7 @@ mutable struct CodePoint
     @_const _cached_hash::UInt64
 
     function CodePoint(cases::Vector{CasePartialResult})
-        new(ImmutableVector(cases), nothing, nothing, nothing,
-            hash(cases, 0xc98a9a23c2d4d915))
+        new(ImmutableVector(cases), nothing, nothing, hash(cases, 0xc98a9a23c2d4d915))
     end
 end
 Base.hash(case::CodePoint, h::UInt64) = hash(case._cached_hash, h)

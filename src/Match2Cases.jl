@@ -213,7 +213,6 @@ function make_next(
     error("pattern cannot be the next action: $(typeof(action))")
 end
 function intern(code::CodePoint, state::BinderState)
-    @assert code.label === nothing
     get!(state.intern, code, code)
 end
 function make_next(
