@@ -252,7 +252,7 @@ mutable struct DeduplicatedCodePoint
     # - A bound pattern to perform and then move on to the next state, or
     # - An Expr to insert into the code when all else is exhausted
     #   (which throws MatchFailure)
-    const action::Union{CasePartialResult, BoundPattern, Expr}
+    @_const action::Union{CasePartialResult, BoundPattern, Expr}
 
     # The next code point(s):
     # - Tuple{} if the action is a case which was matched or a MatchFailure
@@ -260,7 +260,7 @@ mutable struct DeduplicatedCodePoint
     #   the code to perform after the fetch.
     # - Tuple{DeduplicatedCodePoint, DeduplicatedCodePoint} if the action is a test.  These are the states
     #   to go to if the result of the test is true ([1]) or false ([2]).
-    const next::Union{Tuple{}, Tuple{DeduplicatedCodePoint}, Tuple{DeduplicatedCodePoint, DeduplicatedCodePoint}}
+    @_const next::Union{Tuple{}, Tuple{DeduplicatedCodePoint}, Tuple{DeduplicatedCodePoint, DeduplicatedCodePoint}}
 
     @_const _cached_hash::UInt64
     function DeduplicatedCodePoint(action, next)
