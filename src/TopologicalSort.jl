@@ -1,8 +1,10 @@
+using OrderedCollections: OrderedDict
+
 # Compute a topological ordering of a set of nodes reachable from the given
 # roots by the given successor function.
 function topological_sort(successors::Function, roots::AbstractVector{N}) where { N }
     # Compute pred_counts, the number of predecessors of each node
-    pred_counts = Dict{N, Int}()
+    pred_counts = OrderedDict{N, Int}()
     counted = Set{N}()
     to_count = Vector{N}(roots)
     while !isempty(to_count)
@@ -17,7 +19,7 @@ function topological_sort(successors::Function, roots::AbstractVector{N}) where 
     end
 
     # Prepare a ready set of nodes to output that have no predecessors
-    ready = [k for (k, v) in pred_counts if v == 0]
+    ready = N[k for (k, v) in pred_counts if v == 0]
     result = N[]
     sizehint!(result, length(pred_counts))
     while !isempty(ready)
@@ -36,7 +38,7 @@ function topological_sort(successors::Function, roots::AbstractVector{N}) where 
 
     # all of the nodes should have been output by now.  Otherwise there was a cycle.
     if length(pred_counts) != length(result)
-        error("graph had a cycle; ", map(n -> name(n), keys(pred_counts)))
+        error("graph had a cycle involving ", N[k for (k, v) in pred_counts if v != 0], ".")
     end
 
     result
