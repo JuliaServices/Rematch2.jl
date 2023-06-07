@@ -43,7 +43,7 @@ function build_state_machine_core(
 
     # If the value had a type annotation, then we can use that to
     # narrow down the cases that we need to consider.
-    if Base.isexpr(value, :(::))
+    if value isa Expr && value.head == :(::) && length(value.args) == 2
         type = value.args[2]
         bound_type = bind_type(location, type, state.input_variable, state)
         state.types[state.input_variable] = bound_type
