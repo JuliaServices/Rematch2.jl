@@ -7,7 +7,7 @@ end
 # return the code needed for a pattern.
 function code(bound_pattern::BoundPattern, ::BinderState)
     location = bound_pattern.location
-    error("$(location.file):$(location.line): `code` not implemented for `$(typeof(bound_pattern))`.")
+    error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)), ::$BinderState)` not implemented.")
 end
 code(bound_pattern::BoundTruePattern, state::BinderState) = true
 code(bound_pattern::BoundFalsePattern, state::BinderState) = false
@@ -52,7 +52,8 @@ function code(bound_pattern::BoundFetchPattern, state::BinderState)
 end
 
 function code(bound_pattern::BoundFetchPattern)
-    error("$(location.file):$(location.line): `code` not implemented for `$(typeof(bound_pattern))`.")
+    location = bound_pattern.location
+    error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)))` not implemented.")
 end
 function code(bound_pattern::BoundFetchFieldPattern)
     :($getfield($(bound_pattern.input), $(QuoteNode(bound_pattern.field_name))))
