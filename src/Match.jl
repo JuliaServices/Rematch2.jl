@@ -2,15 +2,15 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     @capture(expr, pattern_ = value_) ||
         error(string("Unrecognized @match syntax: ", expr))
 
-    state = BinderState(mod)
-    input_variable::Symbol = state.input_variable
+    binder = BinderContext(mod)
+    input_variable::Symbol = binder.input_variable
     (bound_pattern, assigned) = bind_pattern!(
-        location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
+        location, pattern, input_variable, binder, ImmutableDict{Symbol, Symbol}())
 
-    matched = lower_pattern_to_boolean(bound_pattern, state)
+    matched = lower_pattern_to_boolean(bound_pattern, binder)
     q = Expr(:block,
         # evaluate the assertions
-        state.assertions...,
+        binder.assertions...,
 
         # compute the input into a variable so we do not repeat its side-effects
         :($input_variable = $value),

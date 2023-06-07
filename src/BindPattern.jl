@@ -2,10 +2,10 @@
 #
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
-# and also during code generation, since it holds some of the state required during code
+# and also during code generation, since it holds some of the context required during code
 # generation (such as assertions and assignments)
 #
-struct BinderState
+struct BinderContext
     # The module containing the pattern, in which types appearing in the
     # pattern should be bound.
     mod::Module
@@ -24,13 +24,13 @@ struct BinderState
     # Assertions that should be executed at runtime before the matching code.
     assertions::Vector{Any}
 
-    # A dictionary used to intern CodePoint values in Match2Cases.
+    # A dictionary used to intern AutomatonNode values in Match2Cases.
     intern::Dict
 
     # A counter used to dispense unique integers to make prettier gensyms
     gensyms::Vector{Symbol}
 
-    function BinderState(mod::Module)
+    function BinderContext(mod::Module)
         new(
             mod,
             gensym("input_value"),
@@ -42,31 +42,31 @@ struct BinderState
             )
     end
 end
-function gensym(base::String, state::BinderState)::Symbol
-    s = gensym("$(base)_$(length(state.gensyms))")
-    push!(state.gensyms, s)
+function gensym(base::String, binder::BinderContext)::Symbol
+    s = gensym("$(base)_$(length(binder.gensyms))")
+    push!(binder.gensyms, s)
     s
 end
 gensym(base::String) = Base.gensym(base)
 
 #
-# Pretty-printing utilities helpful for displaying the state machine
+# Pretty-printing utilities helpful for displaying the decision automaton
 #
-pretty(io::IO, p::BoundPattern, state::BinderState) = pretty(io, p)
-function pretty(io::IO, p::BoundFetchPattern, state::BinderState)
-    temp = get_temp(state, p)
+pretty(io::IO, p::BoundPattern, binder::BinderContext) = pretty(io, p)
+function pretty(io::IO, p::BoundFetchPattern, binder::BinderContext)
+    temp = get_temp(binder, p)
     pretty(io, temp)
     print(io, " := ")
     pretty(io, p)
 end
-function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, state::BinderState)
+function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, binder::BinderContext)
     op = (p isa BoundOrPattern) ? "||" : "&&"
     print(io, "(")
     first = true
     for sp in p.subpatterns
         first || print(io, " ", op, " ")
         first = false
-        pretty(io, sp, state)
+        pretty(io, sp, binder)
     end
     print(io, ")")
 end
@@ -135,23 +135,23 @@ end
 #
 const phi_prefix = "saved_"
 is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
-function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(state.assignments, p) do; gentemp(p); end
+function get_temp(binder::BinderContext, p::BoundFetchPattern)
+    get!(binder.assignments, p) do; gentemp(p); end
 end
-function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
-    get!(state.assignments, p) do
+function get_temp(binder::BinderContext, p::BoundFetchExpressionPattern)
+    get!(binder.assignments, p) do
         if p.key isa Symbol
-            sym = get_temp(state, p.key)
+            sym = get_temp(binder, p.key)
             @assert is_phi(sym)
         else
-            sym = gensym("where", state)
+            sym = gensym("where", binder)
         end
         sym
     end
 end
-function get_temp(state::BinderState, p::Symbol)
-    get!(state.assignments, p) do
-        sym = gensym(string(phi_prefix, p), state)
+function get_temp(binder::BinderContext, p::Symbol)
+    get!(binder.assignments, p) do
+        sym = gensym(string(phi_prefix, p), binder)
         @assert is_phi(sym)
         sym
     end
@@ -176,7 +176,7 @@ function bind_pattern!(
     location::LineNumberNode,
     source::Any,
     input::Symbol,
-    state::BinderState,
+    binder::BinderContext,
     assigned::ImmutableDict{Symbol, Symbol})
 
     if source == :_
@@ -216,7 +216,7 @@ function bind_pattern!(
         # bind type at macro expansion time.  It will be verified at runtime.
         bound_type = nothing
         try
-            bound_type = Core.eval(state.mod, Expr(:block, location, T))
+            bound_type = Core.eval(binder.mod, Expr(:block, location, T))
         catch ex
             error("$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
         end
@@ -227,8 +227,8 @@ function bind_pattern!(
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
 
     elseif @capture(source, subpattern_::T_)
-        pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
-        pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
+        pattern1, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
+        pattern2, assigned = bind_pattern!(location, subpattern, input, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
 
     elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
@@ -245,7 +245,7 @@ function bind_pattern!(
         match_positionally = named_count == 0
 
         # bind type at macro expansion time
-        pattern0, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
+        pattern0, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
         field_names::Tuple = infer_fieldnames(bound_type, len, match_positionally, location)
@@ -264,10 +264,10 @@ function bind_pattern!(
                 end
             end
 
-            field_temp = push_pattern!(patterns, state,
+            field_temp = push_pattern!(patterns, binder,
                 BoundFetchFieldPattern(location, pattern_source, input, field_name))
             bound_subpattern, assigned = bind_pattern!(
-                location, pattern_source, field_temp, state, assigned)
+                location, pattern_source, field_temp, binder, assigned)
             push!(patterns, bound_subpattern)
         end
 
@@ -276,15 +276,15 @@ function bind_pattern!(
     elseif @capture(source, subpattern1_ && subpattern2_) ||
           (@capture(source, f_(subpattern1_, subpattern2_)) && f == :&)
         # conjunction: either `(a && b)` or `(a & b)` where `a` and `b` are patterns.
-        bp1, assigned = bind_pattern!(location, subpattern1, input, state, assigned)
-        bp2, assigned = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned = bind_pattern!(location, subpattern1, input, binder, assigned)
+        bp2, assigned = bind_pattern!(location, subpattern2, input, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[bp1, bp2])
 
     elseif @capture(source, subpattern1_ || subpattern2_) ||
           (@capture(source, f_(subpattern1_, subpattern2_)) && f == :|)
         # disjunction: either `(a || b)` or `(a | b)` where `a` and `b` are patterns.
-        bp1, assigned1 = bind_pattern!(location, subpattern1, input, state, assigned)
-        bp2, assigned2 = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned1 = bind_pattern!(location, subpattern1, input, binder, assigned)
+        bp2, assigned2 = bind_pattern!(location, subpattern2, input, binder, assigned)
 
         # compute the common assignments.
         both = intersect(keys(assigned1), keys(assigned2))
@@ -295,7 +295,7 @@ function bind_pattern!(
             if v1 == v2
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, v1)
             else
-                temp = get_temp(state, key)
+                temp = get_temp(binder, key)
                 if v1 != temp
                     save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), key)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
@@ -324,7 +324,7 @@ function bind_pattern!(
         len = length(subpatterns)
 
         # produce a check that the length of the input is sufficient
-        length_temp = push_pattern!(patterns, state,
+        length_temp = push_pattern!(patterns, binder,
             BoundFetchLengthPattern(location, source, input))
         check_length =
             if splat_count != 0
@@ -343,17 +343,17 @@ function bind_pattern!(
                 @assert length(subpattern.args) == 1
                 @assert !seen_splat
                 seen_splat = true
-                range_temp = push_pattern!(patterns, state,
+                range_temp = push_pattern!(patterns, binder,
                     BoundFetchRangePattern(location, subpattern, input, i, len-i))
                 patterni, assigned = bind_pattern!(
-                    location, subpattern.args[1], range_temp, state, assigned)
+                    location, subpattern.args[1], range_temp, binder, assigned)
                 push!(patterns, patterni)
             else
                 index = seen_splat ? (i - len - 1) : i
-                index_temp = push_pattern!(patterns, state,
+                index_temp = push_pattern!(patterns, binder,
                     BoundFetchIndexPattern(location, subpattern, input, index))
                 patterni, assigned = bind_pattern!(
-                    location, subpattern, index_temp, state, assigned)
+                    location, subpattern, index_temp, binder, assigned)
                 push!(patterns, patterni)
             end
         end
@@ -361,8 +361,8 @@ function bind_pattern!(
 
     elseif @capture(source, subpattern_ where guard_)
         # guard
-        pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
-        pattern1 = shred_where_clause(guard, false, location, state, assigned)
+        pattern0, assigned = bind_pattern!(location, subpattern, input, binder, assigned)
+        pattern1 = shred_where_clause(guard, false, location, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
     else
@@ -372,8 +372,8 @@ function bind_pattern!(
     return (pattern, assigned)
 end
 
-function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
-    temp = get_temp(state, pat)
+function push_pattern!(patterns::Vector{BoundPattern}, binder::BinderContext, pat::BoundFetchPattern)
+    temp = get_temp(binder, pat)
     push!(patterns, pat)
     temp
 end
@@ -429,13 +429,13 @@ function shred_where_clause(
     guard::Any,
     inverted::Bool,
     location::LineNumberNode,
-    state::BinderState,
+    binder::BinderContext,
     assigned::ImmutableDict{Symbol, Symbol})::BoundPattern
     if @capture(guard, !g_)
-        return shred_where_clause(g, !inverted, location, state, assigned)
+        return shred_where_clause(g, !inverted, location, binder, assigned)
     elseif @capture(guard, g1_ && g2_) || @capture(guard, g1_ || g2_)
-        left = shred_where_clause(g1, inverted, location, state, assigned)
-        right = shred_where_clause(g2, inverted, location, state, assigned)
+        left = shred_where_clause(g1, inverted, location, binder, assigned)
+        right = shred_where_clause(g2, inverted, location, binder, assigned)
         # DeMorgan's law:
         #     `!(a && b)` => `!a || !b`
         #     `!(a || b)` => `!a && !b`
@@ -444,7 +444,7 @@ function shred_where_clause(
     else
         (guard0, assigned0) = subst_patvars(guard, assigned)
         fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0)
-        temp = get_temp(state, fetch)
+        temp = get_temp(binder, fetch)
         test = BoundWhereTestPattern(location, guard, temp, inverted)
         return BoundAndPattern(location, guard, BoundPattern[fetch, test])
     end

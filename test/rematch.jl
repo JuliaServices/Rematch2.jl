@@ -2,7 +2,7 @@
 # because we need the types to be defined during macro expansion,
 # which is earlier than evaluation.  types are looked up during
 # expansion of the @match macro so we can use the known bindings
-# of types to generate more efficient code.
+# of types to generate more efficient node.
 
 @testset "@rematch tests" begin
 

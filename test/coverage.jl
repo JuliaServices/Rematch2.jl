@@ -1,6 +1,6 @@
 #
-# Additional tests to improve code coverage.
-# These tests mainly exercise diagnostic code that isn't crucial to the
+# Additional tests to improve node coverage.
+# These tests mainly exercise diagnostic node that isn't crucial to the
 # normal operation of the package.
 #
 
@@ -11,12 +11,12 @@ struct D; x; end
 
 expected="""
 """
-@testset "Additional tests to improve code coverage" begin
+@testset "Additional tests to improve node coverage" begin
     io = IOBuffer()
     Rematch2.@match2_dumpall io e begin
         1                            => 1
         Foo(x, x)                    => 2
-        y::D                       => 3   
+        y::D                         => 3   
         [x, y..., z]                 => y
         (x, y..., z) where e.q1      => z
         6 || 7                       => 6

@@ -17,7 +17,7 @@ abstract type BoundFetchPattern <: BoundPattern end
 # Patterns which test some boolean condition.
 abstract type BoundTestPattern <: BoundPattern end
 
-# Functions for pretty-printing patterns and the state machine
+# Functions for pretty-printing patterns and the decision automaton
 pretty(io::IO, x::Any) = print(io, x)
 
 # A pattern that always matches
