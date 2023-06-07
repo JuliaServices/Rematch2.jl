@@ -474,7 +474,7 @@ macro match2_dumpall(value, body)
     handle_match2_dump(__source__, __module__, stdout, value, body, true)
 end
 
-function handle_match2_dump(__source__, __module__, io, value, body, long)
+function handle_match2_dump(__source__, __module__, io, value, body, long::Bool)
     (entry, state) = build_state_machine(__source__, __module__, value, body)
     esc(:($dumpall($io, $entry, $state, $long)))
 end
