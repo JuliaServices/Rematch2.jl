@@ -9,6 +9,10 @@ struct B <: A; end
 struct C <: A; end
 struct D; x; end
 
+struct Trash <: Rematch2.BoundFetchPattern
+    location::LineNumberNode
+end
+
 expected="""
 """
 @testset "Additional tests to improve code coverage" begin
@@ -39,4 +43,9 @@ expected="""
     # end
     # @test actual == expected
     @test true
+
+    @test_throws ErrorException Rematch2.gentemp(:a)
+
+    trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
+    @test_throws ErrorException Rematch2.code(trash)
 end
