@@ -119,6 +119,13 @@ mutable struct CodePoint
     @_const _cached_hash::UInt64
 end
 function CodePoint(cases::Vector{CasePartialResult})
+    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
+    for i in eachindex(cases)
+        if is_irrefutable(cases[i].pattern)
+            cases = cases[1:i]
+            break
+        end
+    end
     CodePoint(ImmutableVector(cases), nothing, nothing, nothing,
         hash(cases, 0xc98a9a23c2d4d915))
 end
@@ -128,16 +135,6 @@ function Base.:(==)(a::CodePoint, b::CodePoint)
     a === b ||
         a._cached_hash == b._cached_hash &&
         isequal(a.cases, b.cases)
-end
-function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
-    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
-    for i in eachindex(cases)
-        if is_irrefutable(cases[i].pattern)
-            cases = cases[1:i]
-            break
-        end
-    end
-    CodePoint(cases)
 end
 function ensure_label!(code::CodePoint, state::BinderState)
     if code.label isa Nothing

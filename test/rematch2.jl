@@ -4,10 +4,74 @@
 # expansion of the @match2 macro so we can use the known bindings
 # of types to generate more efficient code.
 
+struct Bar1
+    x::Bool
+end
+struct Bar3
+    x::Bool
+    y::Bool
+    z::Bool
+end
+bar3 = Bar3(true, true, false)
+
+file = Symbol(@__FILE__)
+
 @testset "@rematch2 tests" begin
 
-    @testset "Assignments in the value DO leak out (when not using `let``)" begin
-        @match2 Foo(1, 2) begin
+@testset "Known field types simplify the state machine 1" begin
+    # State 1 TEST «input_value» == true ELSE: State 3 («label_0»)
+    # State 2 MATCH 1 with value 1
+    # State 3 («label_0») MATCH 2 with value 2
+    f(v) = @Rematch2.match2_count_states v::Bool begin
+        true => 1
+        false => 2
+    end
+    @test f(:x) == 3 # 3 states
+end
+
+@testset "Known field types simplify the state machine 2" begin
+    if VERSION >= v"1.8"
+        # State 1 FETCH «input_value.x» := «input_value».x
+        # State 2 TEST «input_value.x» == true ELSE: State 4 («label_0»)
+        # State 3 MATCH 1 with value 1
+        # State 4 («label_0») FETCH «input_value.y» := «input_value».y
+        # State 5 TEST «input_value.y» == true ELSE: State 7 («label_1»)
+        # State 6 MATCH 2 with value 2
+        # State 7 («label_1») FETCH «input_value.z» := «input_value».z
+        # State 8 TEST «input_value.z» == true ELSE: State 10 («label_2»)
+        # State 9 MATCH 3 with value 3
+        # State 10 («label_2») MATCH 4 with value 4
+        let line = (@__LINE__) + 8
+            @test_warn(
+                "$file:$line: Case 5: `_ =>` is not reachable.",
+                @eval @assert (Rematch2.@match2_count_states bar3::Bar3 begin
+                    Bar3(true, _, _) => 1
+                    Bar3(_, true, _) => 2
+                    Bar3(_, _, true) => 3
+                    Bar3(false, false, false) => 4
+                    _ => 5 # unreachable
+                end) == 10
+                )
+        end
+    end
+end
+
+@testset "warn for unreachable cases" begin
+    if VERSION >= v"1.8"
+        let line = (@__LINE__) + 5
+            @test_warn(
+                "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
+                @eval @match2 Foo(1, 2) begin
+                    Foo(_, _) => 1
+                    Foo(1, 2) => 2
+                end
+                )
+        end
+    end
+end
+
+@testset "Assignments in the value DO leak out (when not using `let`)" begin
+    @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end
@@ -15,7 +79,7 @@
     @test !(@isdefined x)
     @test new_variable == 3
 end
-
+        
 @testset "Assignments in the value do NOT leak out if you use `let`" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) => let
@@ -227,8 +291,6 @@ end
         _                                 => 5
     end) == 20
 end
-
-file = Symbol(@__FILE__)
 
 @testset "infer positional parameters from constructors 1" begin
     # struct T207a
@@ -549,12 +611,18 @@ end
 end
 
 @testset "ensure we use `isequal` and not `==`" begin
-    @test (@match2 (-0.0) begin
+    function f(v)
+        @match2 v begin
             0.0    => 1
             1.0    => 4
             -0.0   => 2
             _      => 3
-        end) == 2
+        end
+    end
+    @test f(0.0) == 1
+    @test f(1.0) == 4
+    @test f(-0.0) == 2
+    @test f(2.0) == 3
 end
 
 # Tests inherited from Rematch below
