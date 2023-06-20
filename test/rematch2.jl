@@ -234,6 +234,12 @@ end
         Foo(x, y) where !(f1(x) || f2(y)) => 3
         _                                 => 5
     end
+    Rematch2.@match2_dump devnull some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end
     @test true
 end
 

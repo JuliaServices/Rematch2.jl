@@ -161,13 +161,6 @@ function dumpall(io::IO, all::Vector{T}, state::BinderState, long::Bool) where {
     length(all)
 end
 
-# Print the entire state machine to `stdout`.  Useful for debugging the state
-# machine and looking for optimization opportunities.
-function dumpall(root, state::BinderState)
-    states = reachable_states(root)
-    dumpall(stdout, states, state, true)
-end
-
 # Pretty-pint either a CodePoint or a DeduplicatedCodePoint
 function pretty(
     io::IO,
