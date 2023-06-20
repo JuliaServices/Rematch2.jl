@@ -79,7 +79,8 @@ function bind_pattern!(
         pattern = BoundEqualValueTestPattern(
             location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
-    elseif is_expr(source, [:macrocall, :quote]) ||
+    elseif is_expr(source, :macrocall) ||
+        is_expr(source, :quote) ||
         (is_expr(source, :call) && source.args[1] == :Symbol) # the type `Symbol`
         # Objects of Julia expression tree types.  We treat them as constants, but
         # we should really match on their structure.  We might treat regular expressions
