@@ -30,8 +30,15 @@ end
     end
 
     @testset "Test topological_sort 4" begin
-        (succ, root) = make_graph([[5, 6, 7], [4, 5, 6], [3, 4, 5], [2, 3, 4], [1, 2, 3], [7, 1]])
-        @test_throws ErrorException topological_sort(succ, [1]) == [1, 2, 3, 4, 5, 6, 7]
+        (succ, root) = make_graph([[5, 6, 7], [4, 5, 6], [3, 4, 5], [2, 3, 4], [1, 2, 3], [7, 3]])
+        @test_throws ErrorException topological_sort(succ, [1])
+        try
+            topological_sort(succ, [1])
+            @test false
+        catch ex
+            @test ex isa ErrorException
+            @test ex.msg == "graph had a cycle involving [3, 4, 5, 6, 7]."
+        end
     end
 
 end

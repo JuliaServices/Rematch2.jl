@@ -541,6 +541,15 @@ end
 
 end
 
+@testset "ensure we use `isequal` and not `==`" begin
+    @test (@match2 (-0.0) begin
+            0.0    => 1
+            1.0    => 4
+            -0.0   => 2
+            _      => 3
+        end) == 2
+end
+
 # Tests inherited from Rematch below
 
 @testset "Match Struct by field names" begin
