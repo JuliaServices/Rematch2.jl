@@ -64,6 +64,17 @@ end
     end
 end
 
+@testset "Check that `where` clauses are reparsed properly 5" begin
+    for b1 in [false, true]
+        for b2 in [false, true]
+            @test (@match2 3 begin
+                ::Int where b1 == b2 => 1
+                _ => 2
+            end) == ((b1 == b2) ? 1 : 2)
+        end
+    end
+end
+
 @testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
