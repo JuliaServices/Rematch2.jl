@@ -152,7 +152,7 @@ end
 const phi_prefix = "saved_"
 is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
 function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(state.assignments, p) do; gentemp(p); end
+    get!(gentemp, state.assignments, p)
 end
 function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
     get!(state.assignments, p) do
