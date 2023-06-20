@@ -26,7 +26,7 @@ struct BinderState
     intern::Dict
 
     # A counter used to dispense unique integers to make prettier gensyms
-    gensyms::Vector{Symbol}
+    num_gensyms::Ref{Int}
 
     function BinderState(mod::Module, input_variable::Symbol)
         new(
@@ -36,14 +36,14 @@ struct BinderState
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Any}(),
             Dict(),
-            Symbol[]
+            Ref{Int}(0)
         )
     end
 end
 
 function gensym(base::String, state::BinderState)::Symbol
-    s = gensym("$(base)_$(length(state.gensyms))")
-    push!(state.gensyms, s)
+    s = gensym("$(base)_$(state.num_gensyms[])")
+    state.num_gensyms[] += 1
     s
 end
 gensym(base::String) = Base.gensym(base)
@@ -77,7 +77,7 @@ function simple_name(n::String)
     if startswith(n, "##")
         n1 = n[3:length(n)]
         last = findlast('#', n1)
-        (last isa Int) ? n1[1:(last-1)] : n1
+        isnothing(last) ? n1 : n1[1:prevind(n1, last)]
     else
         n
     end
@@ -85,7 +85,7 @@ end
 
 #
 # The following are special bindings used to handle the point where
-# a disjunction merges when and two sides have different bindings.
+# a disjunction merges when the two sides have different bindings.
 # In dataflow-analysis terms, this is represented by a phi function.
 # This is a synthetic variable to hold the value that should be used
 # to hold the value after the merge point.
