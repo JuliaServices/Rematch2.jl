@@ -297,7 +297,7 @@ function dedup(
     end
     key = DeduplicatedCodePoint(code.action, next)
     result = get!(dict, key, key)
-    if result != key
+    if result !== key
         # The state already existed, so it must have had two predecessors
         # We will need a label for one of them to use in the generated code
         ensure_label!(result, state)
