@@ -1,13 +1,82 @@
-# Note we do not use `@eval` to define a struct within a @testset
+# Note we do not use `@eval` to define types within a `@testset``
 # because we need the types to be defined during macro expansion,
 # which is earlier than evaluation.  types are looked up during
-# expansion of the @match2 macro so we can use the known bindings
+# expansion of the `@match2`` macro so we can use the known bindings
 # of types to generate more efficient code.
+
+file = Symbol(@__FILE__)
 
 @testset "@rematch2 tests" begin
 
-    @testset "Assignments in the value DO leak out (when not using `let``)" begin
-        @match2 Foo(1, 2) begin
+@testset "Check that `where` clauses are reparsed properly 1" begin
+    x = true
+    @test (@match2 3 begin
+        ::Int where x => 1
+        _ => 2
+    end) == 1
+
+    x = false
+    @test (@match2 3 begin
+        ::Int where x => 1
+        _ => 2
+    end) == 2
+end
+
+@testset "Check that `where` clauses are reparsed properly 2" begin
+    x = true
+    @test (@match2 3 begin
+        a::Int where x => a
+        _ => 2
+    end) == 3
+
+    x = false
+    @test (@match2 3 begin
+        a::Int where x => a
+        _ => 2
+    end) == 2
+end
+
+@testset "Check that `where` clauses are reparsed properly 3" begin
+    let line = 0
+        try
+            line = (@__LINE__) + 2
+            @eval @match2 Foo(1, 2) begin
+                (Foo where unbound)(1, 2) => 1
+            end
+            @test false
+        catch ex
+            @test ex isa LoadError
+            e = ex.error
+            @test e isa ErrorException
+            @test e.msg == "$file:$line: Unregognized pattern syntax `(Foo where unbound)(1, 2)`."
+        end
+    end
+end
+
+@testset "Check that `where` clauses are reparsed properly 4" begin
+    for b1 in [false, true]
+        for b2 in [false, true]
+            @test (@match2 3 begin
+                ::Int where b1 where b2 => 1
+                _ => 2
+            end) == ((b1 && b2) ? 1 : 2)
+        end
+    end
+end
+
+@testset "Check that `where` clauses are reparsed properly 5" begin
+    for b1 in [false, true]
+        for b2 in [false, true]
+            @test (@match2 3 begin
+                ::Int where b1 == b2 => 1
+                _ => 2
+            end) == ((b1 == b2) ? 1 : 2)
+        end
+    end
+end
+
+@testset "Assignments in the value DO leak out (when not using `let``)" begin
+    @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end
@@ -228,7 +297,36 @@ end
     end) == 20
 end
 
-file = Symbol(@__FILE__)
+@testset "test for correct semantics of complex where clauses" begin
+    function f1(a, b, c, d, e, f, g, h)
+        @match2 (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
+            _ => 6
+        end
+    end
+    function f2(a, b, c, d, e, f, g, h)
+        # For reference we use the brute-force implementation of pattern-matching that just
+        # performs the tests sequentially, like writing an if-elseif-else chain.
+        Rematch2.@match (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
+            _ => 6
+    end
+    end
+    function f3(a, b, c, d, e, f, g, h)
+        @test f1(a, b, c, d, e, f, g, h) == f2(a, b, c, d, e, f, g, h)
+    end
+    for t in Iterators.product(([false, true] for a in 1:8)...,)
+        f3(t...)
+    end
+end
 
 @testset "infer positional parameters from constructors 1" begin
     # struct T207a
@@ -328,7 +426,7 @@ end
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Attempted to match non-type `1` as a type."
+                @test e.msg == "$file:$line: Invalid type name: `1`."
             end
         end
     end
