@@ -58,7 +58,9 @@ function is_possible_type_name(t::Expr)
     t.head == :. &&
         is_possible_type_name(t.args[1]) &&
         t.args[2] isa QuoteNode &&
-        is_possible_type_name(t.args[2].value)
+        is_possible_type_name(t.args[2].value) ||
+    t.head == :curly &&
+        all(is_possible_type_name, t.args)
 end
 
 function bind_pattern!(
@@ -111,6 +113,7 @@ function bind_pattern!(
     elseif is_expr(source, :(::), 1)
         # ::type
         T = source.args[1]
+        T, where_clause = split_where(T, location)
         # bind type at macro expansion time.  It will be verified at runtime.
         bound_type = nothing
         try
@@ -123,14 +126,20 @@ function bind_pattern!(
             error("$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
         end
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
+        # Support `::T where ...` even though the where clause parses as
+        # part of the type.
+        pattern = join_where_clause(pattern, where_clause, location, assigned)
 
     elseif is_expr(source, :(::), 2)
-        # subpattern::type
         subpattern = source.args[1]
         T = source.args[2]
+        T, where_clause = split_where(T, location)
         pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
         pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
+        # Support `::T where ...` even though the where clause parses as
+        # part of the type.
+        pattern = join_where_clause(pattern, where_clause, location, assigned)
 
     elseif is_expr(source, :call) && is_possible_type_name(source.args[1])
         # struct pattern.
@@ -305,6 +314,31 @@ function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::
     temp = get_temp(state, pat)
     push!(patterns, pat)
     temp
+end
+
+function split_where(T, location)
+    type = T
+    where_clause = nothing
+    while type isa Expr && type.head == :where
+        where_clause = (where_clause === nothing) ? type.args[2] : :($(type.args[2]) && $where_clause)
+        type = type.args[1]
+    end
+
+    if !is_possible_type_name(type)
+        error("$(location.file):$(location.line): Invalid type name: `$type`.")
+    end
+
+    return (type, where_clause)
+end
+
+function join_where_clause(pattern, where_clause, location, assigned)
+    if where_clause === nothing
+        return pattern
+    else
+        guard0, assigned0 = subst_patvars(where_clause, assigned)
+        pattern1 = BoundWhereTestPattern(location, where_clause, guard0, assigned0)
+        return BoundAndPattern(location, where_clause, BoundPattern[pattern, pattern1])
+    end
 end
 
 #

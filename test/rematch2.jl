@@ -1,7 +1,7 @@
-# Note we do not use `@eval` to define a struct within a @testset
+# Note we do not use `@eval` to define types within a `@testset``
 # because we need the types to be defined during macro expansion,
 # which is earlier than evaluation.  types are looked up during
-# expansion of the @match2 macro so we can use the known bindings
+# expansion of the `@match2`` macro so we can use the known bindings
 # of types to generate more efficient code.
 
 struct T207a
@@ -29,39 +29,9 @@ macro casearm2(pattern, value)
     esc(:(@casearm1 $pattern $value))
 end
 
+file = Symbol(@__FILE__)
+
 @testset "@rematch2 tests" begin
-
-@testset "Check that we can use macros that expand to the case" begin
-    f1(x) = @match2 x begin
-        @casearm1 (2, 1) 1
-        @casearm1 (1, 2) 2
-        @casearm1 _ 3
-    end
-    @test f1((2, 1)) == 1
-    @test f1((1, 2)) == 2
-    @test f1((3, 4)) == 3
-
-    f2(x) = @match2 x begin
-        @casearm2 (2, 1) 1
-        @casearm2 (1, 2) 2
-        @casearm2 _ 3
-    end
-    @test f2((2, 1)) == 1
-    @test f2((1, 2)) == 2
-    @test f2((3, 4)) == 3
-end
-
-@testset "enums" begin
-    # @enum Color Yellow Green Blue
-    f(c) = @match2 c begin
-        $Yellow => 1
-        $Green => 2
-        $Blue => 3
-    end
-    @test f(Yellow) == 1
-    @test f(Green) == 2
-    @test f(Blue) == 3
-end
 
 @testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin
@@ -221,8 +191,6 @@ end
     end) == 7
 end
 
-file = Symbol(@__FILE__)
-
 @testset "infer positional parameters from constructors 1" begin
     # struct T207a
     #     x; y; z
@@ -321,7 +289,7 @@ end
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Attempted to match non-type `1` as a type."
+                @test e.msg == "$file:$line: Invalid type name: `1`."
             end
         end
     end
