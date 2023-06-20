@@ -127,22 +127,6 @@ function gentemp(p::BoundFetchLengthPattern)
 end
 
 #
-# Get the "base" name of a symbol (remove synthetic ## additions)
-#
-function simple_name(s::Symbol)
-    simple_name(string(s))
-end
-function simple_name(n::String)
-    if startswith(n, "##")
-        n1 = n[3:length(n)]
-        last = findlast('#', n1)
-        (last isa Int) ? n1[1:(last-1)] : n1
-    else
-        n
-    end
-end
-
-#
 # The following are special bindings used to handle the point where
 # a disjunction merges when the two sides have different bindings.
 # In dataflow-analysis terms, this is represented by a phi function.
@@ -152,7 +136,7 @@ end
 const phi_prefix = "saved_"
 is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
 function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(gentemp, state.assignments, p)
+    get!(() -> gentemp(p), state.assignments, p)
 end
 function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
     get!(state.assignments, p) do
