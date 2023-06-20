@@ -96,3 +96,9 @@ struct T207c
     x; y; z
 end
 T207c(x, y) = T207c(x, y, x)
+
+struct T207d
+    x; z; y
+    T207d(x, y) = new(x, y, y)
+end
+Rematch2.fieldnames(::Type{T207d}) = (:x, :y)

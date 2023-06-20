@@ -217,6 +217,22 @@ end
     @test r == 2
 end
 
+@testset "infer positional parameters from Rematch2.fieldnames(T) 4" begin
+    # struct T207d
+    #     x; z; y
+    #     T207d(x, y) = new(x, y, y)
+    # end
+    # Rematch2.fieldnames(::Type{T207d}) = (:x, :y)
+    r = @match2 T207d(1, 2) begin
+        T207d(x, y) => x
+    end
+    @test r == 1
+    r = @match2 T207d(1, 2) begin
+        T207d(x, y) => y
+    end
+    @test r == 2
+end
+
 @testset "diagnostics produced are excellent" begin
 
     @testset "stack trace for MatchFailure" begin
