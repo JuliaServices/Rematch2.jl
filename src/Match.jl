@@ -66,6 +66,8 @@ Usage:
 
 Return `result` for the first matching `pattern`.
 If there are no matches, throw `MatchFailure`.
+This uses a brute-force code gen strategy, like using a series of if-else statements.
+It is used for testing purposes, as a reference for correct semantics.
 """
 macro match(value, cases)
     handle_match_cases(__source__, __module__, value, cases)

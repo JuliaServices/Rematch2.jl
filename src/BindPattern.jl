@@ -28,7 +28,7 @@ struct BinderContext
     intern::Dict
 
     # A counter used to dispense unique integers to make prettier gensyms
-    gensyms::Vector{Symbol}
+    num_gensyms::Ref{Int}
 
     function BinderContext(mod::Module)
         new(
@@ -38,13 +38,13 @@ struct BinderContext
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Symbol}(),
             Dict(),
-            Any[]
-            )
+            Ref{Int}(0)
+        )
     end
 end
 function gensym(base::String, binder::BinderContext)::Symbol
-    s = gensym("$(base)_$(length(binder.gensyms))")
-    push!(binder.gensyms, s)
+    s = gensym("$(base)_$(binder.num_gensyms[])")
+    binder.num_gensyms[] += 1
     s
 end
 gensym(base::String) = Base.gensym(base)
@@ -127,8 +127,24 @@ function gentemp(p::BoundFetchLengthPattern)
 end
 
 #
+# Get the "base" name of a symbol (remove synthetic ## additions)
+#
+function simple_name(s::Symbol)
+    simple_name(string(s))
+end
+function simple_name(n::String)
+    if startswith(n, "##")
+        n1 = n[3:length(n)]
+        last = findlast('#', n1)
+        (last isa Int) ? n1[1:(last-1)] : n1
+    else
+        n
+    end
+end
+
+#
 # The following are special bindings used to handle the point where
-# a disjunction merges when and two sides have different bindings.
+# a disjunction merges when the two sides have different bindings.
 # In dataflow-analysis terms, this is represented by a phi function.
 # This is a synthetic variable to hold the value that should be used
 # to hold the value after the merge point.
@@ -169,7 +185,9 @@ function is_possible_type_name(t::Expr)
     t.head == :. &&
         is_possible_type_name(t.args[1]) &&
         t.args[2] isa QuoteNode &&
-        is_possible_type_name(t.args[2].value)
+        is_possible_type_name(t.args[2].value) ||
+    t.head == :curly &&
+        all(is_possible_type_name, t.args)
 end
 
 function bind_pattern!(
@@ -213,6 +231,7 @@ function bind_pattern!(
         end
 
     elseif @capture(source, ::T_)
+        T, where_clause = split_where(T, location)
         # bind type at macro expansion time.  It will be verified at runtime.
         bound_type = nothing
         try
@@ -225,11 +244,18 @@ function bind_pattern!(
             error("$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
         end
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
+        # Support `::T where ...` even though the where clause parses as
+        # part of the type.
+        pattern = join_where_clause(pattern, where_clause, location, binder, assigned)
 
     elseif @capture(source, subpattern_::T_)
+        T, where_clause = split_where(T, location)
         pattern1, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
         pattern2, assigned = bind_pattern!(location, subpattern, input, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
+        # Support `::T where ...` even though the where clause parses as
+        # part of the type.
+        pattern = join_where_clause(pattern, where_clause, location, binder, assigned)
 
     elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
         # struct pattern.
@@ -376,6 +402,30 @@ function push_pattern!(patterns::Vector{BoundPattern}, binder::BinderContext, pa
     temp = get_temp(binder, pat)
     push!(patterns, pat)
     temp
+end
+
+function split_where(T, location)
+    type = T
+    where_clause = nothing
+    while type isa Expr && type.head == :where
+        where_clause = (where_clause === nothing) ? type.args[2] : :($(type.args[2]) && $where_clause)
+        type = type.args[1]
+    end
+
+    if !is_possible_type_name(type)
+        error("$(location.file):$(location.line): Invalid type name: `$type`.")
+    end
+
+    return (type, where_clause)
+end
+
+function join_where_clause(pattern, where_clause, location, binder, assigned)
+    if where_clause === nothing
+        return pattern
+    else
+        pattern1 = shred_where_clause(where_clause, false, location, binder, assigned)
+        return BoundAndPattern(location, where_clause, BoundPattern[pattern, pattern1])
+    end
 end
 
 #
