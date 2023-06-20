@@ -311,12 +311,6 @@ function bind_pattern!(
     return (pattern, assigned)
 end
 
-function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
-    temp = get_temp(state, pat)
-    push!(patterns, pat)
-    temp
-end
-
 function split_where(T, location)
     type = T
     where_clause = nothing
