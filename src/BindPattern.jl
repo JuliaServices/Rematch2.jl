@@ -77,9 +77,8 @@ function bind_pattern!(
         pattern = BoundEqualValueTestPattern(
             location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
-    elseif is_expr(source, :macrocall) ||
-        is_expr(source, :quote) ||
-        is_expr(source, :call) && source.args[1] == :Symbol
+    elseif is_expr(source, [:macrocall, :quote]) ||
+        (is_expr(source, :call) && source.args[1] == :Symbol) # the type `Symbol`
         # Objects of Julia expression tree types.  We treat them as constants, but
         # we should really match on their structure.  We might treat regular expressions
         # specially, handle interpolation inside, etc.
@@ -129,8 +128,8 @@ function bind_pattern!(
         # subpattern::type
         subpattern = source.args[1]
         T = source.args[2]
-        (pattern1, assigned) = bind_pattern!(location, :(::($T)), input, state, assigned)
-        (pattern2, assigned) = bind_pattern!(location, subpattern, input, state, assigned)
+        pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
+        pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
 
     elseif is_expr(source, :call) && is_possible_type_name(source.args[1])
@@ -184,8 +183,8 @@ function bind_pattern!(
         # conjunction: `(a && b)` where `a` and `b` are patterns.
         subpattern1 = source.args[1]
         subpattern2 = source.args[2]
-        (bp1, assigned) = bind_pattern!(location, subpattern1, input, state, assigned)
-        (bp2, assigned) = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned = bind_pattern!(location, subpattern1, input, state, assigned)
+        bp2, assigned = bind_pattern!(location, subpattern2, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[bp1, bp2])
 
     elseif is_expr(source, :call, 3) && source.args[1] == :&
@@ -196,8 +195,8 @@ function bind_pattern!(
         # disjunction: `(a || b)` where `a` and `b` are patterns.
         subpattern1 = source.args[1]
         subpattern2 = source.args[2]
-        (bp1, assigned1) = bind_pattern!(location, subpattern1, input, state, assigned)
-        (bp2, assigned2) = bind_pattern!(location, subpattern2, input, state, assigned)
+        bp1, assigned1 = bind_pattern!(location, subpattern1, input, state, assigned)
+        bp2, assigned2 = bind_pattern!(location, subpattern2, input, state, assigned)
 
         # compute the common assignments.
         both = intersect(keys(assigned1), keys(assigned2))

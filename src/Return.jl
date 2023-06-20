@@ -1,7 +1,7 @@
 """
     @match_fail
 
-This statement permits early-exit from the value of a @match case.
+This statement permits early-exit from the value of a @match2 case.
 The programmer may write the value as a `begin ... end` and then,
 within the value, the programmer may write
 
@@ -14,13 +14,13 @@ rule "*really*" matched.
 macro match_fail()
     # These are rewritten during expansion of the `@match` macro,
     # so the actual macro should not be used directly.
-    error("$(__source__.file):$(__source__.line): @match_fail may only be used within the value of a @match case.")
+    error("$(__source__.file):$(__source__.line): @match_fail may only be used within the value of a @match2 case.")
 end
 
 """
     @match_return value
 
-This statement permits early-exit from the value of a @match case.
+This statement permits early-exit from the value of a @match2 case.
 The programmer may write the value as a `begin ... end` and then,
 within the value, the programmer may write
 
@@ -32,7 +32,7 @@ given value.
 macro match_return(x)
     # These are rewritten during expansion of the `@match` macro,
     # so the actual macro should not be used.
-    error("$(__source__.file):$(__source__.line): @match_return may only be used within the value of a @match case.")
+    error("$(__source__.file):$(__source__.line): @match_return may only be used within the value of a @match2 case.")
 end
 
 #
@@ -80,27 +80,28 @@ function adjust_case_for_return_macro(__module__, pattern, result)
     label = gensym("label")
     found_early_exit::Bool = false
     function adjust_top(p)
-        p isa Expr && p.head == :macrocall || return p
+        is_expr(p, :macrocall) || return p
         if length(p.args) == 3 &&
             (p.args[1] == :var"@match_return"  || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match_return")))
             # :(@match_return e) -> :($value = $e; @goto $label)
             found_early_exit = true
-            Expr(:block, p.args[2], :($value = $(p.args[3])), :(@goto $label))
+            return Expr(:block, p.args[2], :($value = $(p.args[3])), :(@goto $label))
         elseif length(p.args) == 2 &&
             (p.args[1] == :var"@match_fail"  || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match_fail")))
             # :(@match_fail) -> :($value = $MatchFaulure; @goto $label)
             found_early_exit = true
-            Expr(:block, p.args[2], :($value = $MatchFailure), :(@goto $label))
+            return Expr(:block, p.args[2], :($value = $MatchFailure), :(@goto $label))
         elseif length(p.args) == 3 &&
             (p.args[1] == :var"@match" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match")) ||
              p.args[1] == :var"@match2" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match2")))
             # Nested uses of @match should be treated as independent
-            macroexpand(__module__, p)
+            return macroexpand(__module__, p)
         else
             # It is possible for a macro to expand into @match_fail, so only expand one step.
-            adjust_top(macroexpand(__module__, p; recursive = false))
+            return adjust_top(macroexpand(__module__, p; recursive = false))
         end
     end
+
     rewritten_result = MacroTools.prewalk(adjust_top, result)
     if found_early_exit
         where_expr = Expr(:block, :($value = $rewritten_result), :(@label $label), :($value !== $MatchFailure))

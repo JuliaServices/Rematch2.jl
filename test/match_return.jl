@@ -39,7 +39,7 @@ file = Symbol(@__FILE__)
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: @match_return may only be used within the value of a @match case."
+            @test e.msg == "$file:$line: @match_return may only be used within the value of a @match2 case."
         end
     end
 end
@@ -54,8 +54,19 @@ end
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: @match_fail may only be used within the value of a @match case."
+            @test e.msg == "$file:$line: @match_fail may only be used within the value of a @match2 case."
         end
+    end
+end
+
+@testset "uses of early-exit macros outside @match2 produce errors 3" begin
+    try
+        @eval @match_fail nothing
+        @test false
+    catch ex
+        @test ex isa LoadError
+        e = ex.error
+        @test e isa MethodError # wrong number of arguments to @match_fail
     end
 end
 
