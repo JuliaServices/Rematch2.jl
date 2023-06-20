@@ -1,9 +1,9 @@
 # Rematch2 - Pattern-matching for Julia
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://gafter.github.io/Rematch2.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://gafter.github.io/Rematch2.jl/dev/)
-[![Build Status](https://github.com/gafter/Rematch2.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/gafter/Rematch2.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/gafter/Rematch2.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/gafter/Rematch2.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/dev/)
+[![Build Status](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/JuliaServices/Rematch2.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaServices/Rematch2.jl)
 
 Pattern matching for Julia.  A rewrite of [`Rematch.jl`](https://github.com/RelationalAI-oss/Rematch.jl)
 that offers improved performance at runtime, additional pattern forms, and improved control of
@@ -137,6 +137,31 @@ Patterns can be nested arbitrarily.
 
 Repeated variables only match if they are equal (`==`). For example `(x,x)` matches `(1,1)` but not `(1,2)`.
 
+## Early exit and failure
+
+Inside the result part of a case, you can cause the pattern to fail (as if the pattern does not match), or you can return a value early:
+
+```julia
+@match2 value let
+    pattern1 => begin
+        if some_failure_condition
+            @match_fail
+        end
+        if some_shortcut_condition
+            @match_return 1
+        end
+        ...
+        2
+    end
+    ...
+end
+```
+
+In this example, the result value when matching `pattern1` is a block that has two early exit conditions.
+When `pattern1` matches but `some_failure_condition` is `true`, then the whole case is treated as not matching and the following cases are tried.
+Otherwise, if `some_shortcut_condition` is `true`, then `1` is the result value for this case.
+Otherwise `2` is the result.
+
 ## Differences from [Match.jl](https://github.com/kmsquire/Match.jl)
 
 This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/Rematch.jl),
@@ -158,9 +183,11 @@ If we make this a new revision of `Rematch`, only `@match` will be supported.
 
 ### `Rematch2` differs from `Rematch` in the following ways:
 
+* Errors always identify a specific line in the user's program where the problem occurred.
 * Previously bound variables may now be used in interpolations, ie `@match2 (x, $(x+2)) = (1, 3)` is a match.
 * A pure type match (without another pattern) can be written as `::Type`.
-* Types appearing in type patterns (`::Type`) and struct patterns (`Type(...)`) are bound at macro-expansion time in the context of the module containing the macro usage.  As a consequence, you cannot use certain type expressions that would differ.  For example, you cannot use a type parameter or a local variable containing a type.  The generated code checks that the type is the same at evaluation time as it was at macro expansion time, and an error is thrown if they differ.  If this rare incompatibility affects you, you can use `x where x isa Type` as a workaround.
+* Types appearing in type patterns (`::Type`) and struct patterns (`Type(...)`) are bound at macro-expansion time in the context of the module containing the macro usage.  As a consequence, you cannot use certain type expressions that would differ.  For example, you cannot use a type parameter or a local variable containing a type.  The generated code checks that the type is the same at evaluation time as it was at macro expansion time, and an error is thrown if they differ.  If this rare incompatibility affects you, you can use `x where x isa Type` as a workaround.  If the type is not defined at macro-expansion time, an error is issued.
 * Variables assigned in a `where` clause may be used later, e.g. in the result of a case.
 * Variables assigned in the result of a case may be used outside the `@match2` expression.
 * To hide assignments in `@match2` cases, you can use `let ... end` around the cases instead of `begin ... end`.
+* A warning is issued at macro-expansion time if a case cannot be reached because it is subsumed by prior cases.

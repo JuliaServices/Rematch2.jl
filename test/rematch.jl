@@ -91,7 +91,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Attempted to match non-type `1` as a type."
+                @test e.msg == "$file:$line: Invalid type name: `1`."
             end
         end
     end
