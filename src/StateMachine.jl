@@ -126,10 +126,10 @@ function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
     CodePoint(cases)
 end
 function name(code::T, id::IdDict{T, Int}) where { T }
-    if code.label isa Nothing
-        "State $(id[code])"
-    else
+    if hasfield(typeof(code), :label) && code.label !== nothing
         "State $(id[code]) ($(pretty_name(code.label)))"
+    else
+        "State $(id[code])"
     end
 end
 function successors(c::T)::Vector{T} where { T }
