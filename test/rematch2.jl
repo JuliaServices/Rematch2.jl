@@ -335,7 +335,7 @@ end
         end
     end
 
-    @testset "attempt to match non-type" begin
+    @testset "attempt to match non-type 1" begin
         let line = 0
             try
                 line = (@__LINE__) + 2
@@ -348,6 +348,23 @@ end
                 e = ex.error
                 @test e isa ErrorException
                 @test e.msg == "$file:$line: Invalid type name: `1`."
+            end
+        end
+    end
+
+    @testset "attempt to match non-type 2" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 Foo(1, 2) begin
+                    ::Base => 1
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Attempted to match non-type `Base` as a type."
             end
         end
     end
