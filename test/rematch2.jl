@@ -291,6 +291,17 @@ end
     end) == 20
 end
 
+@testset "exercise the dumping code for coverage" begin
+    io = IOBuffer()
+    Rematch2.@match2_dump_states io some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end
+    @test true
+end
+
 @testset "test for correct semantics of complex where clauses" begin
     function f1(a, b, c, d, e, f, g, h)
         @match2 (a, b, c, d, e, f, g, h) begin

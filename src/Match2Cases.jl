@@ -91,7 +91,6 @@ pretty(io::IO, p::BoundEqualValueTestPattern) = print(io, p.input, " == ", p.val
 pretty(io::IO, p::BoundRelationalTestPattern) = print(io, p.input, " ", p.relation, " ", p.value)
 function pretty(io::IO, p::BoundWhereTestPattern)
     print(io, "where ")
-    isempty(p.assigned) || pretty(io, p.assigned)
     print(io, p.source)
 end
 pretty(io::IO, p::BoundTypeTestPattern) = print(io, p.input, " isa ", p.type)
