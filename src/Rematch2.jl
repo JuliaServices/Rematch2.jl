@@ -3,6 +3,7 @@ module Rematch2
 export @match, @match2, MatchFailure
 
 using MacroTools: MacroTools, @capture
+using Base.Iterators: reverse
 
 struct MatchFailure <: Exception
     value

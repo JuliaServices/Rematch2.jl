@@ -53,10 +53,7 @@ function build_state_machine_core(
             end
             next = code.next
             @assert next !== nothing
-            succ = successors(code)
-            for i in 1:length(succ)
-                push!(work_queue, succ[i])
-            end
+            union!(work_queue, successors(code))
         end
     end
 
@@ -81,7 +78,8 @@ function generate_code(top_down_states::Vector{DeduplicatedCodePoint}, value, lo
     emit = Any[location, :($(state.input_variable) = $value)]
 
     # put the first node last so it will be the first to be emitted
-    togen = reverse(top_down_states)
+    reverse!(top_down_states)
+    togen = top_down_states # but now it's in the right order to consume from the end
 
     while !isempty(togen)
         pc = pop!(togen)

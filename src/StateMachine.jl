@@ -75,11 +75,13 @@ function pretty(io::IO, case::CasePartialResult, state::BinderState)
     println(io)
 end
 
+abstract type AbstractCodePoint end
+
 #
 # A state of the decision automaton (i.e. a point in the generated code),
 # which is represented a set of partially matched cases.
 #
-mutable struct CodePoint
+mutable struct CodePoint <: AbstractCodePoint
     # The state of the cases.  Impossible cases, which are designated by a
     # `false` `bound_pattern`, are removed from this array.  Cases are always
     # ordered by `case_number`.
@@ -125,25 +127,25 @@ function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
     end
     CodePoint(cases)
 end
-function name(code::T, id::IdDict{T, Int}) where { T }
+function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
     if hasfield(typeof(code), :label) && code.label !== nothing
         "State $(id[code]) ($(pretty_name(code.label)))"
     else
         "State $(id[code])"
     end
 end
-function successors(c::T)::Vector{T} where { T }
+function successors(c::T)::Vector{T} where { T <: AbstractCodePoint }
     @assert !(c.next isa Nothing)
     collect(c.next)
 end
-function reachable_states(root::T)::Vector{T} where { T }
+function reachable_states(root::T)::Vector{T} where { T <: AbstractCodePoint}
     topological_sort(successors, [root])
 end
 
 #
 # Support for pretty-printing
 #
-function dumpall(io::IO, all::Vector{T}, state::BinderState, long::Bool) where { T }
+function dumpall(io::IO, all::Vector{T}, state::BinderState, long::Bool) where { T <: AbstractCodePoint }
     long = long && T <: CodePoint
 
     # Make a map from each CodePoint to its index
@@ -167,8 +169,7 @@ function pretty(
     code::T,
     state::BinderState,
     id::IdDict{T, Int},
-    long::Bool = true) where { T }
-    # Long form only available for CodePoint.
+    long::Bool = true) where { T <: AbstractCodePoint }
     long = long && code isa CodePoint
     print(io, name(code, id))
     if long
@@ -234,7 +235,7 @@ end
 # We merge states with identical behavior, bottom-up, to minimize the size of
 # the state machine.  We define `hash` and `==` to take account of only what matters.
 # Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `CodePoint`.
-mutable struct DeduplicatedCodePoint
+mutable struct DeduplicatedCodePoint <: AbstractCodePoint
     # A label to produce in the code at entry to the code where
     # this state is implemented, if one is needed.  This is not produced
     # when this struct is created, but later during code generation.
@@ -312,7 +313,7 @@ function deduplicate_state_machine(entry::CodePoint, state::BinderState)
     dedup_map = Dict{DeduplicatedCodePoint, DeduplicatedCodePoint}()
     result = Vector{DeduplicatedCodePoint}()
     top_down_states = reachable_states(entry)
-    bottom_up_states = reverse(top_down_states)
+    bottom_up_states = Iterators.reverse(top_down_states)
     for e in bottom_up_states
         d = dedup(dedup_map, e, state)
         if d.label === nothing
