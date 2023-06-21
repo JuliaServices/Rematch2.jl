@@ -288,13 +288,18 @@ function remove(action::BoundFetchPattern, code::CodePoint, state::BinderState):
     end
     succ
 end
-function remove(action::BoundTestPattern, sense::Bool, code::CodePoint, state::BinderState)::CodePoint
-    cases = map(c -> remove(action, sense, c, state), code.cases)
+function remove(
+    action::BoundTestPattern,
+    # action_result is `true` or `false`, whatever the result of the test `action` was
+    action_result::Bool,
+    code::CodePoint,
+    state::BinderState)::CodePoint
+    cases = map(c -> remove(action, action_result, c, state), code.cases)
     return CodePoint(cases)
 end
 
-function remove(action::BoundTestPattern, sense::Bool, case::CasePartialResult, state::BinderState)::CasePartialResult
-    with_pattern(case, remove(action, sense, case.pattern, state))
+function remove(action::BoundTestPattern, action_result::Bool, case::CasePartialResult, state::BinderState)::CasePartialResult
+    with_pattern(case, remove(action, action_result, case.pattern, state))
 end
 function remove(action::BoundFetchPattern, case::CasePartialResult, state::BinderState)::CasePartialResult
     with_pattern(case, remove(action, case.pattern, state))
@@ -304,7 +309,7 @@ end
 # Remove the given action from a pattern.
 #
 remove(action::BoundFetchPattern, pattern::BoundPattern, state::BinderState)::BoundPattern = pattern
-remove(action::BoundTestPattern, sense::Bool, pattern::BoundPattern, state::BinderState)::BoundPattern = pattern
+remove(action::BoundTestPattern, action_result::Bool, pattern::BoundPattern, state::BinderState)::BoundPattern = pattern
 function remove(action::BoundFetchPattern, pattern::BoundFetchPattern, state::BinderState)::BoundPattern
     return (action == pattern) ? BoundTruePattern(pattern.location, pattern.source) : pattern
 end
@@ -312,15 +317,15 @@ function remove(action::BoundFetchPattern, pattern::Union{BoundAndPattern,BoundO
     subpatterns = collect(BoundPattern, map(p -> remove(action, p, state), pattern.subpatterns))
     return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
 end
-function remove(action::BoundTestPattern, sense::Bool, pattern::BoundTestPattern, state::BinderState)::BoundPattern
-    return (action == pattern) ? BoundBoolPattern(pattern.location, pattern.source, sense) : pattern
+function remove(action::BoundTestPattern, action_result::Bool, pattern::BoundTestPattern, state::BinderState)::BoundPattern
+    return (action == pattern) ? BoundBoolPattern(pattern.location, pattern.source, action_result) : pattern
 end
-function remove(action::BoundEqualValueTestPattern, sense::Bool, pattern::BoundEqualValueTestPattern, state::BinderState)::BoundPattern
+function remove(action::BoundEqualValueTestPattern, action_result::Bool, pattern::BoundEqualValueTestPattern, state::BinderState)::BoundPattern
     if action.input != pattern.input
         return pattern
     end
     if isequal(action.value, pattern.value)
-        return BoundBoolPattern(pattern.location, pattern.source, sense)
+        return BoundBoolPattern(pattern.location, pattern.source, action_result)
     end
 
     # As a special case, if the input variable is of type Bool, then we know that true and false
@@ -329,29 +334,29 @@ function remove(action::BoundEqualValueTestPattern, sense::Bool, pattern::BoundE
     if type == Bool && action.value isa Bool && pattern.value isa Bool
         @assert action.value != pattern.value # because we already checked for equality
         # If the one succeeded, then the other one fails
-        return BoundBoolPattern(pattern.location, pattern.source, !sense)
+        return BoundBoolPattern(pattern.location, pattern.source, !action_result)
     end
 
     return pattern
 end
-function remove(action::BoundTestPattern, sense::Bool, pattern::Union{BoundAndPattern,BoundOrPattern}, state::BinderState)::BoundPattern
-    subpatterns = collect(BoundPattern, map(p -> remove(action, sense, p, state), pattern.subpatterns))
+function remove(action::BoundTestPattern, action_result::Bool, pattern::Union{BoundAndPattern,BoundOrPattern}, state::BinderState)::BoundPattern
+    subpatterns = collect(BoundPattern, map(p -> remove(action, action_result, p, state), pattern.subpatterns))
     return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
 end
-function remove(action::BoundWhereTestPattern, sense::Bool, pattern::BoundWhereTestPattern, state::BinderState)::BoundPattern
+function remove(action::BoundWhereTestPattern, action_result::Bool, pattern::BoundWhereTestPattern, state::BinderState)::BoundPattern
     # Two where tests can be related by being the inverse of each other.
     action.input == pattern.input || return pattern
-    replacement_value = (action.inverted == pattern.inverted) == sense
+    replacement_value = (action.inverted == pattern.inverted) == action_result
     return BoundBoolPattern(pattern.location, pattern.source, replacement_value)
 end
-function remove(action::BoundTypeTestPattern, sense::Bool, pattern::BoundTypeTestPattern, state::BinderState)::BoundPattern
+function remove(action::BoundTypeTestPattern, action_result::Bool, pattern::BoundTypeTestPattern, state::BinderState)::BoundPattern
     # Knowing the result of one type test can give information about another.  For
     # example, if you know `x` is a `String`, then you know that it isn't an `Int`.
     if (action == pattern)
-        return BoundBoolPattern(pattern.location, pattern.source, sense)
+        return BoundBoolPattern(pattern.location, pattern.source, action_result)
     elseif action.input != pattern.input
         return pattern
-    elseif sense
+    elseif action_result
         # the type test succeeded.
         if action.type <: pattern.type
             return BoundTruePattern(pattern.location, pattern.source)
