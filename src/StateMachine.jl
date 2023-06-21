@@ -145,11 +145,7 @@ function ensure_label!(code::CodePoint, state::BinderState)
     end
 end
 function name(code::CodePoint, id::IdDict{CodePoint, Int})
-    if code.label isa Nothing
-        "State $(id[code])"
-    else
-        "State $(id[code]) ($(pretty_name(code.label)))"
-    end
+    "State $(id[code])"
 end
 function successors(c::CodePoint)::Vector{CodePoint}
     @assert !(c.next isa Nothing)
