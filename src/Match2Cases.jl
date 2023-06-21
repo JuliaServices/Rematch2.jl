@@ -29,7 +29,7 @@ struct CasePartialResult
 
     # The set of user variables to assign when the match succeeds;
     # they might be used in the result expression.
-    assigned::ImmutableDict{Symbol, Symbol}
+    assigned::VariableAssignment
 
     # The user's result expression for this case.
     result_expression::Any
@@ -40,7 +40,7 @@ struct CasePartialResult
         location::LineNumberNode,
         pattern_source,
         pattern::BoundPattern,
-        assigned::ImmutableDict{Symbol, Symbol},
+        assigned::VariableAssignment,
         result_expression::Any)
         _hash = hash((case_number, pattern, assigned), 0x1cdd9657bfb1e645)
         new(case_number, location, pattern_source, pattern, assigned, result_expression, _hash)
@@ -330,7 +330,7 @@ function bind_case(
     end
 
     bound_pattern, assigned = bind_pattern!(
-        location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
+        location, pattern, state.input_variable, state, VariableAssignment())
     result0, assigned0 = subst_patvars(result, assigned)
     return CasePartialResult(case_number, location, pattern, bound_pattern, assigned0, result0)
 end

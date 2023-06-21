@@ -5,7 +5,7 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     input_variable::Symbol = gensym("input_value")
     state = BinderState(mod, input_variable)
     (bound_pattern, assigned) = bind_pattern!(
-        location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
+        location, pattern, input_variable, state, VariableAssignment())
 
     matched = lower_pattern_to_boolean(bound_pattern, state)
     q = Expr(:block,

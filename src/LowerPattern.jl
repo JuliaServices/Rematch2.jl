@@ -1,5 +1,5 @@
 
-function assignments(assigned::ImmutableDict{Symbol, Symbol})
+function assignments(assigned::VariableAssignment)
     # produce a list of assignments to be splatted into the caller
     return (:($patvar = $resultsym) for (patvar, resultsym) in assigned)
 end

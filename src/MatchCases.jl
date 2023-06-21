@@ -1,7 +1,7 @@
 struct MatchCaseResult
     location::LineNumberNode
     matched_expression::Any
-    assigned::ImmutableDict{Symbol, Symbol}
+    assigned::VariableAssignment
     result_expression::Any
 end
 
@@ -10,7 +10,7 @@ function handle_match_case(
     input_variable::Symbol,
     case,
     state::BinderState)
-    assigned = ImmutableDict{Symbol, Symbol}()
+    assigned = VariableAssignment()
     if @capture(case, pattern_ => result_)
         bound_pattern, assigned = bind_pattern!(
             location, pattern, input_variable, state, assigned)

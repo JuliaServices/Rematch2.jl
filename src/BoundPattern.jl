@@ -1,5 +1,5 @@
 
-# const Assigned = ImmutableDict{Symbol, Symbol}
+const VariableAssignment = ImmutableDict{Symbol, Symbol}
 
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
 # up into more primitive forms.  For example, the pattern `s::String` is represented as
@@ -44,7 +44,7 @@ struct BoundEqualValueTestPattern <: BoundTestPattern
     source::Any
     input::Symbol
     value::Any  # the value that the input should be compared to using `isequal`
-    assigned::ImmutableDict{Symbol, Symbol}
+    assigned::VariableAssignment
 end
 function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
     hash((a.input, a.value, a.assigned, 0x7e92a644c831493f), h)
@@ -76,7 +76,7 @@ struct BoundWhereTestPattern <: BoundTestPattern
     location::LineNumberNode
     source::Any
     value::Any # boolean expression to evaluate
-    assigned::ImmutableDict{Symbol, Symbol}
+    assigned::VariableAssignment
 end
 function Base.hash(a::BoundWhereTestPattern, h::UInt64)
     hash((a.value, a.assigned, 0x868a8076acbe0e12), h)
