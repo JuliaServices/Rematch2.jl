@@ -1,6 +1,7 @@
 using Base: ImmutableDict
 
 # Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
+# See https://github.com/JuliaLang/julia/issues/50241
 # const Assigned = ImmutableDict{Symbol, Symbol}
 
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
