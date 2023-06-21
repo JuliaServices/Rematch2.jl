@@ -81,10 +81,15 @@ function generate_code(top_down_states::Vector{DeduplicatedCodePoint}, value, lo
     reverse!(top_down_states)
     togen = top_down_states # but now it's in the right order to consume from the end
 
+    labels = IdDict{DeduplicatedCodePoint, Symbol}()
+    function label(code::DeduplicatedCodePoint)
+        get!(() -> gensym("label", state), labels, code)
+    end
+
     while !isempty(togen)
         pc = pop!(togen)
-        if pc.label isa Symbol
-            push!(emit, :(@label $(pc.label)))
+        if pc in keys(labels)
+            push!(emit, :(@label $(label(pc))))
         end
         action = pc.action
         if action isa CasePartialResult
@@ -98,18 +103,15 @@ function generate_code(top_down_states::Vector{DeduplicatedCodePoint}, value, lo
             (next::DeduplicatedCodePoint,) = pc.next
             if last(togen) != next
                 # we need a `goto`, since it isn't the next thing we can fall into
-                ensure_label!(next, state)
-                push!(emit, :(@goto $(next.label)))
+                push!(emit, :(@goto $(label(next))))
             end
         elseif action isa BoundTestPattern
             push!(emit, action.location)
             next_true, next_false = pc.next
-            @assert next_false.label isa Symbol
-            push!(emit, :($(code(action, state)) || @goto $(next_false.label)))
+            push!(emit, :($(code(action, state)) || @goto $(label(next_false))))
             if last(togen) != next_true
                 # we need a `goto`, since it isn't the next thing we can fall into
-                ensure_label!(next_true, state)
-                push!(emit, :(@goto $(next_true.label)))
+                push!(emit, :(@goto $(label(next_true))))
             end
         elseif action isa Expr
             push!(emit, action)

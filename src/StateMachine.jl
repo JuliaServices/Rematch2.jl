@@ -128,11 +128,7 @@ function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
     CodePoint(cases)
 end
 function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
-    if hasfield(typeof(code), :label) && code.label !== nothing
-        "State $(id[code]) ($(pretty_name(code.label)))"
-    else
-        "State $(id[code])"
-    end
+    "State $(id[code])"
 end
 function successors(c::T)::Vector{T} where { T <: AbstractCodePoint }
     @assert !(c.next isa Nothing)
@@ -270,11 +266,6 @@ function Base.:(==)(a::DeduplicatedCodePoint, b::DeduplicatedCodePoint)
         isequal(a.action, b.action) &&
         isequal(a.next, b.next)
 end
-function ensure_label!(code::DeduplicatedCodePoint, state::BinderState)
-    if code.label isa Nothing
-        code.label = gensym("label", state)
-    end
-end
 
 #
 # Deduplicate a code point, given the deduplications of the downstream code points.
@@ -290,19 +281,12 @@ function dedup(
     elseif code.next isa Tuple{CodePoint, CodePoint}
         t = dedup(dict, code.next[1], state)
         f = dedup(dict, code.next[2], state)
-        # we might fall through to the true label, but we always jump to the false label
-        ensure_label!(f, state)
         (t, f)
     else
         error("Unknown next type: $(code.next)")
     end
     key = DeduplicatedCodePoint(code.action, next)
     result = get!(dict, key, key)
-    if result !== key
-        # The state already existed, so it must have had two predecessors
-        # We will need a label for one of them to use in the generated code
-        ensure_label!(result, state)
-    end
     result
 end
 
@@ -315,11 +299,7 @@ function deduplicate_state_machine(entry::CodePoint, state::BinderState)
     top_down_states = reachable_states(entry)
     bottom_up_states = Iterators.reverse(top_down_states)
     for e in bottom_up_states
-        d = dedup(dedup_map, e, state)
-        if d.label === nothing
-            # It is a newly seen state
-            push!(result, d)
-        end
+        dedup(dedup_map, e, state)
     end
     new_entry = dedup(dedup_map, entry, state)
     return reachable_states(new_entry)
