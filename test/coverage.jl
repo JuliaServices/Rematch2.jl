@@ -16,13 +16,16 @@ expected="""
     Rematch2.@match2_dumpall io e begin
         1                            => 1
         Foo(x, x)                    => 2
-        y::D                       => 3   
+        y::D                         => 3
         [x, y..., z]                 => y
         (x, y..., z) where e.q1      => z
         6 || 7                       => 6
         (x::A) where e.q2            => 7
         (x::B) where e.q3            => 8
         (x::C) where e.q4            => 9
+        Foo(x, 2) where f1(x)            => 1
+        Foo(1, y) where f2(y)            => 2
+        Foo(x, y) where (f1(x) && f2(y)) => 3
         _                            => 10
     end
     actual = String(take!(io))
