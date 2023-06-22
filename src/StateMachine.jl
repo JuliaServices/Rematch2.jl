@@ -144,12 +144,8 @@ function ensure_label!(node::AutomatonNode, binder::BinderContext)
         node.label = gensym("label", binder)
     end
 end
-function name(node::AutomatonNode, id::IdDict{AutomatonNode, Int})
-    if node.label isa Nothing
-        "State $(id[node])"
-    else
-        "State $(id[node]) ($(pretty_name(node.label)))"
-    end
+function name(code::AutomatonNode, id::IdDict{AutomatonNode, Int})
+    "State $(id[code])"
 end
 function successors(c::AutomatonNode)::Vector{AutomatonNode}
     @assert !(c.next isa Nothing)
@@ -167,21 +163,17 @@ function dumpall(io::IO, root::AutomatonNode, binder::BinderContext, long::Bool)
     # Make a map from each AutomatonNode to its index
     id = IdDict{AutomatonNode, Int}(map(((i,s),) -> s => i, enumerate(all))...)
     long && println(io)
-    print(io, "State Machine: ($(length(all)) nodes) input ")
+    print(io, "Decision Automaton: ($(length(all)) nodes) input ")
     pretty(io, binder.input_variable)
     println(io)
     for node in all
         pretty(io, node, binder, id, long)
         println(io)
     end
-    println(io, "end # of decision automaton")
+    println(io, "end # of automaton")
     long && println(io)
     length(all)
 end
-
-# Print the entire automaton to `stdout`.  Useful for debugging the decision
-# automaton and looking for optimization opportunities.
-dumpall(root::AutomatonNode, binder::BinderContext) = dumpall(stdout, root, binder, true)
 
 function pretty(
     io::IO,
@@ -201,7 +193,6 @@ function pretty(
     long && print(io, "   ")
     if action isa CasePartialResult
         print(io, " MATCH ", action.case_number, " with value ")
-        isempty(action.assigned) || long && pretty(io, action.assigned)
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
         if action isa BoundTestPattern

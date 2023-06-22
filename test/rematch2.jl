@@ -4,76 +4,34 @@
 # expansion of the `@match2` macro so we can use the known bindings
 # of types to generate more efficient code.
 
+struct T207a
+    x; y; z
+    T207a(x, y) = new(x, y, x)
+end
+
+struct T207b
+    x; y; z
+    T207b(x, y; z = x) = new(x, y, z)
+end
+
+struct T207c
+    x; y; z
+end
+T207c(x, y) = T207c(x, y, x)
+
+@enum Color Yellow Green Blue
+
+macro casearm1(pattern, value)
+    esc(:($pattern => $value))
+end
+
+macro casearm2(pattern, value)
+    esc(:(@casearm1 $pattern $value))
+end
+
 file = Symbol(@__FILE__)
 
 @testset "@rematch2 tests" begin
-
-@testset "Check that `where` clauses are reparsed properly 1" begin
-    x = true
-    @test (@match2 3 begin
-        ::Int where x => 1
-        _ => 2
-    end) == 1
-
-    x = false
-    @test (@match2 3 begin
-        ::Int where x => 1
-        _ => 2
-    end) == 2
-end
-
-@testset "Check that `where` clauses are reparsed properly 2" begin
-    x = true
-    @test (@match2 3 begin
-        a::Int where x => a
-        _ => 2
-    end) == 3
-
-    x = false
-    @test (@match2 3 begin
-        a::Int where x => a
-        _ => 2
-    end) == 2
-end
-
-@testset "Check that `where` clauses are reparsed properly 3" begin
-    let line = 0
-        try
-            line = (@__LINE__) + 2
-            @eval @match2 Foo(1, 2) begin
-                (Foo where unbound)(1, 2) => 1
-            end
-            @test false
-        catch ex
-            @test ex isa LoadError
-            e = ex.error
-            @test e isa ErrorException
-            @test e.msg == "$file:$line: Unregognized pattern syntax `(Foo where unbound)(1, 2)`."
-        end
-    end
-end
-
-@testset "Check that `where` clauses are reparsed properly 4" begin
-    for b1 in [false, true]
-        for b2 in [false, true]
-            @test (@match2 3 begin
-                ::Int where b1 where b2 => 1
-                _ => 2
-            end) == ((b1 && b2) ? 1 : 2)
-        end
-    end
-end
-
-@testset "Check that `where` clauses are reparsed properly 5" begin
-    for b1 in [false, true]
-        for b2 in [false, true]
-            @test (@match2 3 begin
-                ::Int where b1 == b2 => 1
-                _ => 2
-            end) == ((b1 == b2) ? 1 : 2)
-        end
-    end
-end
 
 @testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin

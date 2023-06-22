@@ -11,13 +11,14 @@ function handle_match_case(
     case,
     binder::BinderContext)
     assigned = ImmutableDict{Symbol, Symbol}()
-    if @capture(case, pattern_ => result_)
-        bound_pattern, assigned = bind_pattern!(
-            location, pattern, input_variable, binder, assigned)
-        matched = lower_pattern_to_boolean(bound_pattern, binder)
-    else
+
+    is_expr(case, :call, 3) && case.args[1] == :(=>) ||
         error("$(location.file):$(location.line): Unrecognized @match case syntax: `$case`.")
-    end
+    pattern = case.args[2]
+    result = case.args[3]
+    (bound_pattern, assigned) = bind_pattern!(
+        location, pattern, input_variable, binder, assigned)
+    matched = lower_pattern_to_boolean(bound_pattern, binder)
 
     result0, assigned0 = subst_patvars(result, assigned)
     return MatchCaseResult(location, matched, assigned0, result0)
