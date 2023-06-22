@@ -142,11 +142,7 @@ function ensure_label!(code::CodePoint, state::BinderState)
     end
 end
 function name(code::CodePoint, id::IdDict{CodePoint, Int})
-    if code.label isa Nothing
-        "State $(id[code])"
-    else
-        "State $(id[code]) ($(pretty_name(code.label)))"
-    end
+    "State $(id[code])"
 end
 function successors(c::CodePoint)::Vector{CodePoint}
     @assert !(c.next isa Nothing)
@@ -176,10 +172,6 @@ function dumpall(io::IO, root::CodePoint, state::BinderState, long::Bool)
     length(all)
 end
 
-# Print the entire state machine to `stdout`.  Useful for debugging the state
-# machine and looking for optimization opportunities.
-dumpall(root::CodePoint, state::BinderState) = dumpall(stdout, root, state, true)
-
 function pretty(
     io::IO,
     code::CodePoint,
@@ -198,7 +190,6 @@ function pretty(
     long && print(io, "   ")
     if action isa CasePartialResult
         print(io, " MATCH ", action.case_number, " with value ")
-        isempty(action.assigned) || long && pretty(io, action.assigned)
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
         if action isa BoundTestPattern

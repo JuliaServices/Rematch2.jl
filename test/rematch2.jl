@@ -4,7 +4,9 @@
 # expansion of the `@match2`` macro so we can use the known bindings
 # of types to generate more efficient code.
 
-@testset "@rematch2 tests" begin
+file = Symbol(@__FILE__)
+
+@testset "@rematch2 tests 1" begin
 
 @testset "Check that `where` clauses are reparsed properly 1" begin
     x = true
@@ -33,8 +35,6 @@ end
         _ => 2
     end) == 2
 end
-
-file = Symbol(@__FILE__)
 
 @testset "Check that `where` clauses are reparsed properly 3" begin
     let line = 0
@@ -75,8 +75,37 @@ end
     end
 end
 
-    @testset "Assignments in the value DO leak out (when not using `let``)" begin
-        @match2 Foo(1, 2) begin
+end
+
+struct T207a
+    x; y; z
+    T207a(x, y) = new(x, y, x)
+end
+
+struct T207b
+    x; y; z
+    T207b(x, y; z = x) = new(x, y, z)
+end
+
+struct T207c
+    x; y; z
+end
+T207c(x, y) = T207c(x, y, x)
+
+@enum Color Yellow Green Blue
+
+macro casearm1(pattern, value)
+    esc(:($pattern => $value))
+end
+
+macro casearm2(pattern, value)
+    esc(:(@casearm1 $pattern $value))
+end
+
+@testset "@rematch2 tests 2" begin
+
+@testset "Assignments in the value DO leak out (when not using `let``)" begin
+    @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end
