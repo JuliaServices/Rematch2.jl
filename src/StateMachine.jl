@@ -223,10 +223,6 @@ function pretty(
         long && print(io, "   ")
         print(io, " ELSE: $(name(next[2], id))")
     elseif next isa Tuple{}
-        if long
-            print(io, "\n   ")
-            print(io, " END")
-        end
     else
         error(" UNKNOWN ")
     end

@@ -60,17 +60,6 @@ function pretty(io::IO, p::BoundFetchPattern, state::BinderState)
     print(io, " := ")
     pretty(io, p)
 end
-function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, state::BinderState)
-    op = (p isa BoundOrPattern) ? "||" : "&&"
-    print(io, "(")
-    first = true
-    for sp in p.subpatterns
-        first || print(io, " ", op, " ")
-        first = false
-        pretty(io, sp, state)
-    end
-    print(io, ")")
-end
 function pretty(io::IO, s::Symbol)
     print(io, pretty_name(s))
 end
