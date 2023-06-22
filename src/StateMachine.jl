@@ -111,7 +111,6 @@ mutable struct CodePoint <: AbstractCodePoint
     end
 end
 Base.hash(case::CodePoint, h::UInt64) = hash(case._cached_hash, h)
-Base.hash(case::CodePoint) = case._cached_hash
 function Base.:(==)(a::CodePoint, b::CodePoint)
     a === b ||
         a._cached_hash == b._cached_hash &&
@@ -126,9 +125,6 @@ function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
         end
     end
     CodePoint(cases)
-end
-function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
-    "State $(id[code])"
 end
 function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
     "State $(id[code])"
