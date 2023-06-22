@@ -164,7 +164,7 @@ function dumpall(io::IO, all::Vector{T}, state::BinderState, long::Bool) where {
     length(all)
 end
 
-# Pretty-pint either a CodePoint or a DeduplicatedCodePoint
+# Pretty-print either a CodePoint or a DeduplicatedCodePoint
 function pretty(
     io::IO,
     code::T,

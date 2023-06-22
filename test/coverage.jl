@@ -357,19 +357,10 @@ end # of state machine
         Foo(x, y) where (f1(x) && f2(y)) => 3
     end
     actual = String(take!(io))
-    println(actual)
 
-    #
-    # The debug output isn't deterministic yet, so we can't test it.
-    # We should figure out why and make it deterministic.
-    #
-    println()
-    println(actual)
-    println()
     for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
         @test a == e
     end
-    # @test actual == expected
 end
 
 @testset "test @match2_dumpall for code coverage" begin
