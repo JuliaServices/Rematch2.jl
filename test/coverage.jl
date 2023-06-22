@@ -369,5 +369,6 @@ end # of state machine
     binder = Rematch2.BinderState(@__MODULE__)
     trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
     @test_throws ErrorException Rematch2.gentemp(trash)
+    @test_throws ErrorException Rematch2.code(trash)
     @test_throws ErrorException Rematch2.code(trash, binder)
 end
