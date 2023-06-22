@@ -330,10 +330,16 @@ function bind_case(
     location::LineNumberNode,
     case,
     state::BinderState)::CasePartialResult
-    if !(@capture(case, pattern_ => result_))
-        error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
+    while case isa Expr && case.head == :macrocall
+        # expand top-level macros only
+        case = macroexpand(state.mod, case, recursive=false)
     end
 
+    is_expr(case, :call, 3) && case.args[1] == :(=>) ||
+        error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
+    pattern = case.args[2]
+    result = case.args[3]
+    (pattern, result) = adjust_case_for_return_macro(state.mod, pattern, result)
     bound_pattern, assigned = bind_pattern!(
         location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
     result0, assigned0 = subst_patvars(result, assigned)

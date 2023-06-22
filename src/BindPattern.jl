@@ -1,3 +1,4 @@
+using Base: is_expr
 
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
@@ -140,23 +141,31 @@ function bind_pattern!(
         # wildcard pattern
         pattern = BoundTruePattern(location, source)
 
-    elseif (!(source isa Expr || source isa Symbol) ||
-        @capture(source, _quote_macrocall) ||
-        @capture(source, Symbol(_)) # questionable
-        )
+    elseif !(source isa Expr || source isa Symbol)
         # a constant
         pattern = BoundEqualValueTestPattern(
             location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
-    elseif source isa Expr && source.head == :$
+    elseif is_expr(source, :macrocall) ||
+        is_expr(source, :quote) ||
+        (is_expr(source, :call) && source.args[1] == :Symbol) # the type `Symbol`
+        # Objects of Julia expression tree types.  We treat them as constants, but
+        # we should really match on their structure.  We might treat regular expressions
+        # specially, handle interpolation inside, etc.
+        # See #6, #30, #31, #32
+        pattern = BoundEqualValueTestPattern(
+            location, source, input, source, ImmutableDict{Symbol, Symbol}())
+
+    elseif is_expr(source, :$)
         # an interpolation
         interpolation = source.args[1]
         interpolation0, assigned0 = subst_patvars(interpolation, assigned)
         pattern = BoundEqualValueTestPattern(
             location, interpolation, input, interpolation0, assigned0)
 
-    elseif @capture(source, varsymbol_Symbol)
+    elseif source isa Symbol
         # variable pattern (just a symbol)
+        varsymbol::Symbol = source
         if haskey(assigned, varsymbol)
             # previously introduced variable.  Get the symbol holding its value
             var_value = assigned[varsymbol]
@@ -169,7 +178,9 @@ function bind_pattern!(
             pattern = BoundTruePattern(location, source)
         end
 
-    elseif @capture(source, ::T_)
+    elseif is_expr(source, :(::), 1)
+        # ::type
+        T = source.args[1]
         T, where_clause = split_where(T, location)
         # bind type at macro expansion time.  It will be verified at runtime.
         bound_type = nothing
@@ -187,7 +198,9 @@ function bind_pattern!(
         # part of the type.
         pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
-    elseif @capture(source, subpattern_::T_)
+    elseif is_expr(source, :(::), 2)
+        subpattern = source.args[1]
+        T = source.args[2]
         T, where_clause = split_where(T, location)
         pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
         pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
@@ -196,8 +209,11 @@ function bind_pattern!(
         # part of the type.
         pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
-    elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
+    elseif is_expr(source, :call) && is_possible_type_name(source.args[1])
         # struct pattern.
+        # TypeName(patterns...)
+        T = source.args[1]
+        subpatterns = source.args[2:length(source.args)]
         len = length(subpatterns)
         named_fields = [pat.args[1] for pat in subpatterns if (pat isa Expr) && pat.head == :kw]
         named_count = length(named_fields)
@@ -240,16 +256,22 @@ function bind_pattern!(
 
         pattern = BoundAndPattern(location, source, patterns)
 
-    elseif @capture(source, subpattern1_ && subpattern2_) ||
-          (@capture(source, f_(subpattern1_, subpattern2_)) && f == :&)
-        # conjunction: either `(a && b)` or `(a & b)` where `a` and `b` are patterns.
+    elseif is_expr(source, :(&&), 2)
+        # conjunction: `(a && b)` where `a` and `b` are patterns.
+        subpattern1 = source.args[1]
+        subpattern2 = source.args[2]
         bp1, assigned = bind_pattern!(location, subpattern1, input, state, assigned)
         bp2, assigned = bind_pattern!(location, subpattern2, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[bp1, bp2])
 
-    elseif @capture(source, subpattern1_ || subpattern2_) ||
-          (@capture(source, f_(subpattern1_, subpattern2_)) && f == :|)
-        # disjunction: either `(a || b)` or `(a | b)` where `a` and `b` are patterns.
+    elseif is_expr(source, :call, 3) && source.args[1] == :&
+        # conjunction: `(a & b)` where `a` and `b` are patterns.
+        return bind_pattern!(location, Expr(:(&&), source.args[2], source.args[3]), input, state, assigned)
+
+    elseif is_expr(source, :(||), 2)
+        # disjunction: `(a || b)` where `a` and `b` are patterns.
+        subpattern1 = source.args[1]
+        subpattern2 = source.args[2]
         bp1, assigned1 = bind_pattern!(location, subpattern1, input, state, assigned)
         bp2, assigned2 = bind_pattern!(location, subpattern2, input, state, assigned)
 
@@ -276,9 +298,14 @@ function bind_pattern!(
         end
         pattern = BoundOrPattern(location, source, BoundPattern[bp1, bp2])
 
-    elseif @capture(source, [subpatterns__]) || @capture(source, (subpatterns__,))
+    elseif is_expr(source, :call, 3) && source.args[1] == :|
+        # disjunction: `(a | b)` where `a` and `b` are patterns.
+        return bind_pattern!(location, Expr(:(||), source.args[2], source.args[3]), input, state, assigned)
+
+    elseif is_expr(source, :tuple) || is_expr(source, :vect)
         # array or tuple
-        splat_count = count(s -> s isa Expr && s.head == :..., subpatterns)
+        subpatterns = source.args
+        splat_count = count(s -> is_expr(s, :...), subpatterns)
         if splat_count > 1
             error("$(location.file):$(location.line): More than one `...` in pattern `$source`.")
         end
@@ -335,8 +362,10 @@ function bind_pattern!(
         end
         pattern = BoundAndPattern(location, source, patterns)
 
-    elseif @capture(source, subpattern_ where guard_)
-        # guard
+    elseif is_expr(source, :where, 2)
+        # subpattern where guard
+        subpattern = source.args[1]
+        guard = source.args[2]
         pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         guard0, assigned0 = subst_patvars(guard, assigned)
         pattern1 = shred_where_clause(guard, false, location, state, assigned)
@@ -347,12 +376,6 @@ function bind_pattern!(
     end
 
     return (pattern, assigned)
-end
-
-function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
-    temp = get_temp(state, pat)
-    push!(patterns, pat)
-    temp
 end
 
 function split_where(T, location)
