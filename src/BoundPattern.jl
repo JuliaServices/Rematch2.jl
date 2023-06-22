@@ -120,18 +120,6 @@ function pretty(io::IO, p::BoundWhereTestPattern)
     p.inverted && print(io, "!")
     pretty(io, p.input)
 end
-function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
-    print(io, "[")
-    first = true
-    for pair in d
-        first || print(io, ", ")
-        first = false
-        pretty(io, pair.first)
-        print(io, " => ")
-        pretty(io, pair.second)
-    end
-    print(io, "]")
-end
 
 # A pattern like ::Type which matches if the type matches.
 struct BoundTypeTestPattern <: BoundTestPattern

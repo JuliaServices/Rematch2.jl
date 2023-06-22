@@ -233,7 +233,7 @@ State 31
     NEXT: State 32 (fall through)
 State 32
   4: true => «input_value[2:(length-1)]»
-    MATCH 4 with value [y => «input_value[2:(length-1)]»]«input_value[2:(length-1)]»
+    MATCH 4 with value «input_value[2:(length-1)]»
 State 33
   5: («input_value» isa Tuple && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[-1]» := «input_value»[-1] && «where_0» := (e).q1 && where «where_0») => «input_value[-1]»
   6: («input_value» == 6 || «input_value» == 7) => 6
@@ -278,7 +278,7 @@ State 38
     ELSE: State 40
 State 39
   5: true => «input_value[-1]»
-    MATCH 5 with value [z => «input_value[-1]»]«input_value[-1]»
+    MATCH 5 with value «input_value[-1]»
 State 40
   6: («input_value» == 6 || «input_value» == 7) => 6
   13: true => 10

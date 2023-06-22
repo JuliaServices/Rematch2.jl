@@ -197,7 +197,6 @@ function pretty(
     long && print(io, "   ")
     if action isa CasePartialResult
         print(io, " MATCH ", action.case_number, " with value ")
-        isempty(action.assigned) || long && pretty(io, action.assigned)
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
         if action isa BoundTestPattern
