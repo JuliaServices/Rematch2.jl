@@ -136,6 +136,12 @@ end
     end
 end
 
+#
+# To print the state machines shown in comments below, replace @match2_count_states
+# with @match2_dump and run the test.  To show the full details of how the state
+# machine was computed, try @match2_dumpall.
+#
+
 @testset "test for state machine optimizations 1" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
@@ -251,7 +257,7 @@ end
 
 @testset "exercise the dumping code for coverage" begin
     io = IOBuffer()
-    Rematch2.@match2_dump_states io some_value begin
+    Rematch2.@match2_dumpall io some_value begin
         Foo(x, 2) where !f1(x)            => 1
         Foo(1, y) where !f2(y)            => 2
         Foo(x, y) where !(f1(x) || f2(y)) => 3
@@ -263,11 +269,11 @@ end
 @testset "test for correct semantics of complex where clauses" begin
     function f1(a, b, c, d, e, f, g, h)
         @match2 (a, b, c, d, e, f, g, h) begin
-            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d) || (e || f) && !(!g || h))) => 1
-            (a, b, c, d, e, f, g, h) where ((a || b) && !(c || d) || !(!(e || !f) && !(!g || !h))) => 2
-            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (c || !d) || !((!e || f) && (!g || h)))) => 3
-            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d)) || !((e || !f) && (g || !h))) => 4
-            (a, b, c, d, e, f, g, h) where (!(!a || !b) && !(!c || !d) || (e || !f) && (g || h)) => 5
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
             _ => 6
         end
     end
@@ -275,13 +281,13 @@ end
         # For reference we use the brute-force implementation of pattern-matching that just
         # performs the tests sequentially, like writing an if-elseif-else chain.
         Rematch2.@match (a, b, c, d, e, f, g, h) begin
-            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d) || (e || f) && !(!g || h))) => 1
-            (a, b, c, d, e, f, g, h) where ((a || b) && !(c || d) || !(!(e || !f) && !(!g || !h))) => 2
-            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (c || !d) || !((!e || f) && (!g || h)))) => 3
-            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d)) || !((e || !f) && (g || !h))) => 4
-            (a, b, c, d, e, f, g, h) where (!(!a || !b) && !(!c || !d) || (e || !f) && (g || h)) => 5
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
             _ => 6
-        end
+    end
     end
     function f3(a, b, c, d, e, f, g, h)
         @test f1(a, b, c, d, e, f, g, h) == f2(a, b, c, d, e, f, g, h)

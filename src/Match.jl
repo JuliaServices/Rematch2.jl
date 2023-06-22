@@ -4,8 +4,8 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     pattern = expr.args[1]
     value = expr.args[2]
 
-    input_variable::Symbol = gensym("input_value")
-    state = BinderState(mod, input_variable)
+    state = BinderState(mod)
+    input_variable::Symbol = state.input_variable
     (bound_pattern, assigned) = bind_pattern!(
         location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
 

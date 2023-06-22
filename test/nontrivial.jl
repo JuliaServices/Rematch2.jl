@@ -88,23 +88,16 @@ macro simplify_top(n, mac)
     end)
 end
 
-# @simplify_top(0, Rematch.@match(expr))
 @simplify_top(1, Rematch2.@match(expr))
 @simplify_top(2, Rematch2.@match2(expr))
 
 @testset "Check some complex cases" begin
+
     x = Variable(:x)
     y = Variable(:y)
     z = Variable(:z)
     zero = Const(0.0)
     one = Const(1.0)
-
-    @testset "Check some simple cases" begin
-        @test simplify_top1(Sub(x, Neg(y))) == Add(x, y)
-        @test simplify_top2(Sub(x, Neg(y))) == Add(x, y)
-        @test simplify_top1(Add(x, Neg(y))) == Sub(x, y)
-        @test simplify_top2(Add(x, Neg(y))) == Sub(x, y)
-    end
 
     e1 = Add(zero, x)
     e2 = Add(x, zero)
@@ -133,11 +126,12 @@ end
     # The expected results of simplification
     expected = Sub(Const(-63.0), Mul(Const(3.0), x))
 
-    # println("expr:             ", expr)
-    # println("expected:         ", expected)
-    # println("Rematch.@match:   ", simplify0(expr))
-    # println("Rematch2.@match:  ", simplify1(expr))
-    # println("Rematch2.@match2: ", simplify2(expr))
+    @testset "Check some simple cases" begin
+        @test simplify_top1(Sub(x, Neg(y))) == Add(x, y)
+        @test simplify_top2(Sub(x, Neg(y))) == Add(x, y)
+        @test simplify_top1(Add(x, Neg(y))) == Sub(x, y)
+        @test simplify_top2(Add(x, Neg(y))) == Sub(x, y)
+    end
 
     # @test simplify0(expr) == expected
     @test simplify1(expr) == expected
@@ -165,7 +159,8 @@ end
     # performance_test(expr)
 end
 
-@testset "matching expressions, example from Match.jl documentation and VideoIO.jl" begin
+@testset "examples from Match.jl" begin
+    # matching expressions, example from Match.jl documentation and VideoIO.jl
     # Code has been adapted due to https://github.com/gafter/Rematch2.jl/issues/32
     let
         extract_name(x::Any) = Symbol(string(x))

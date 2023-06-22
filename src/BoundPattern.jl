@@ -1,4 +1,7 @@
+using Base: ImmutableDict
 
+# Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
+# See https://github.com/JuliaLang/julia/issues/50241
 # const Assigned = ImmutableDict{Symbol, Symbol}
 
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
@@ -15,6 +18,9 @@ abstract type BoundFetchPattern <: BoundPattern end
 # Patterns which test some boolean condition.
 abstract type BoundTestPattern <: BoundPattern end
 
+# Functions for pretty-printing patterns and the state machine
+pretty(io::IO, x::Any) = print(io, x)
+
 # A pattern that always matches
 struct BoundTruePattern <: BoundPattern
     location::LineNumberNode
@@ -22,6 +28,7 @@ struct BoundTruePattern <: BoundPattern
 end
 Base.hash(::BoundTruePattern, h::UInt64) = hash(0x8cc17f34ef3bbb1d, h)
 Base.:(==)(a::BoundTruePattern, b::BoundTruePattern) = true
+pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 
 # A pattern that never matches
 struct BoundFalsePattern <: BoundPattern
@@ -30,6 +37,7 @@ struct BoundFalsePattern <: BoundPattern
 end
 Base.hash(::BoundFalsePattern, h::UInt64) = hash(0xeb817c7d6beb3bda, h)
 Base.:(==)(a::BoundFalsePattern, b::BoundFalsePattern) = true
+pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 
 function BoundBoolPattern(location::LineNumberNode, source::Any, b::Bool)
     b ? BoundTruePattern(location, source) : BoundFalsePattern(location, source)
@@ -39,18 +47,36 @@ end
 # Note that for a pattern variable `x` that is previously bound, `x` means
 # the same thing as `$x` or `$(x)`.  We test a constant pattern by applying
 # `isequal(input_value, pattern.value)`
+# The stored `value` has had substitutions (recorded in `assigned`) applied
+# by the caller, so that semantically equivalent tests might be syntactically
+# equivalent.
 struct BoundEqualValueTestPattern <: BoundTestPattern
     location::LineNumberNode
     source::Any
     input::Symbol
     value::Any  # the value that the input should be compared to using `isequal`
     assigned::ImmutableDict{Symbol, Symbol}
+    key::Union{Nothing, Symbol} # A key that can be used to force two patterns to be distinct
+end
+function BoundEqualValueTestPattern(
+        location::LineNumberNode,
+        source::Any,
+        input::Symbol,
+        value::Any,
+        assigned::ImmutableDict{Symbol, Symbol})
+    key = any(p -> is_phi(p.second), assigned) ? gensym("unique") : nothing
+    BoundEqualValueTestPattern(location, source, input, value, assigned, key)
 end
 function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
-    hash((a.input, a.value, a.assigned, 0x7e92a644c831493f), h)
+    hash((a.input, a.value, a.key, 0x7e92a644c831493f), h)
 end
 function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a.input == b.input && isequal(a.value, b.value) && a.assigned == b.assigned
+    a.input == b.input && isequal(a.value, b.value) && a.key == b.key
+end
+function pretty(io::IO, p::BoundEqualValueTestPattern)
+    pretty(io, p.input)
+    print(io, " == ")
+    pretty(io, p.value)
 end
 
 # A pattern that compares the input, which must be an Integer, using a Relational
@@ -69,6 +95,11 @@ function Base.hash(a::BoundRelationalTestPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundRelationalTestPattern, b::BoundRelationalTestPattern)
     a.input == b.input && a.relation == b.relation && a.value == b.value
+end
+function pretty(io::IO, p::BoundRelationalTestPattern)
+    pretty(io, p.input)
+    print(io, " ", p.relation, " ")
+    pretty(io, p.value)
 end
 
 # A pattern that simply checks the given boolean variable
@@ -102,6 +133,10 @@ function Base.hash(a::BoundTypeTestPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundTypeTestPattern, b::BoundTypeTestPattern)
     a.input == b.input && a.type == b.type
+end
+function pretty(io::IO, p::BoundTypeTestPattern)
+    pretty(io, p.input)
+    print(io, " isa ", p.type)
 end
 
 # A pattern that matches if any disjunct matches
@@ -181,6 +216,17 @@ Base.hash(a::BoundAndPattern) = a._cached_hash
 function Base.:(==)(a::BoundAndPattern, b::BoundAndPattern)
     a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
+function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern})
+    op = (p isa BoundOrPattern) ? "||" : "&&"
+    print(io, "(")
+    first = true
+    for sp in p.subpatterns
+        first || print(io, " ", op, " ")
+        first = false
+        pretty(io, sp)
+    end
+    print(io, ")")
+end
 
 # Fetch a field of the input into into a fresh temporary synthetic variable.
 # Used to decompose patterns that match subfields.  Treated as always "true"
@@ -201,6 +247,10 @@ end
 function Base.:(==)(a::BoundFetchFieldPattern, b::BoundFetchFieldPattern)
     a.input == b.input && a.field_name == b.field_name
 end
+function pretty(io::IO, p::BoundFetchFieldPattern)
+    pretty(io, p.input)
+    print(io, ".", p.field_name)
+end
 
 # Fetch a value at a given index of the input into a temporary.  See `BoundFetchFieldPattern`
 # for the general idea of how these are used.  Negative indices index from the end of
@@ -218,6 +268,10 @@ end
 function Base.:(==)(a::BoundFetchIndexPattern, b::BoundFetchIndexPattern)
     a.input == b.input && a.index == b.index
 end
+function pretty(io::IO, p::BoundFetchIndexPattern)
+    pretty(io, p.input)
+    print(io, "[", p.index, "]")
+end
 
 # Fetch a subsequence at a given range of the input into a temporary.
 struct BoundFetchRangePattern <: BoundFetchPattern
@@ -233,6 +287,10 @@ end
 function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
     a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
 end
+function pretty(io::IO, p::BoundFetchRangePattern)
+    pretty(io, p.input)
+    print(io, "[", p.first_index, ":(length(", pretty_name(p.input), ")-", p.from_end, ")]")
+end
 
 # Compute the length of the input (tuple or array)
 struct BoundFetchLengthPattern <: BoundFetchPattern
@@ -245,6 +303,11 @@ function Base.hash(a::BoundFetchLengthPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundFetchLengthPattern, b::BoundFetchLengthPattern)
     a.input == b.input
+end
+function pretty(io::IO, p::BoundFetchLengthPattern)
+    print(io, "length(")
+    pretty(io, p.input)
+    print(io, ")")
 end
 
 # Preserve the value of the expression into a temp.
