@@ -175,10 +175,6 @@ function dumpall(io::IO, root::CodePoint, state::BinderState, long::Bool)
     length(all)
 end
 
-# Print the entire state machine to `stdout`.  Useful for debugging the state
-# machine and looking for optimization opportunities.
-dumpall(root::CodePoint, state::BinderState) = dumpall(stdout, root, state, true)
-
 function pretty(
     io::IO,
     code::CodePoint,
