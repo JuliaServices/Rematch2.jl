@@ -1,8 +1,9 @@
 module Rematch2
 
-export @match, @match2, MatchFailure
+export @match, @match2, MatchFailure, @match_return, @match_fail
 
 using MacroTools: MacroTools, @capture
+using Base: ImmutableDict
 
 struct MatchFailure <: Exception
     value
@@ -17,5 +18,6 @@ include("MatchCases.jl")
 include("Match.jl")
 include("StateMachine.jl")
 include("Match2Cases.jl")
+include("Return.jl")
 
 end # module
