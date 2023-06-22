@@ -61,3 +61,8 @@ struct App <: Term
     f::Term
     v::Term
 end
+
+struct BoolPair
+    a::Bool
+    b::Bool
+end

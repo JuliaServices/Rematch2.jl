@@ -616,11 +616,13 @@ end
 
     if VERSION >= v"1.8"
         @testset "warn for unreachable cases" begin
-            let line = (@__LINE__) + 4
+            let line = (@__LINE__) + 5
                 @test_warn(
                     "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
-                    # Test macros remove line number nodes, so we can only get the start of it
-                    @eval @match2 Foo(1, 2) begin; Foo(_, _) => 1; Foo(1, 2) => 2; end
+                    @eval @match2 Foo(1, 2) begin
+                        Foo(_, _) => 1
+                        Foo(1, 2) => 2
+                    end
                     )
             end
         end
@@ -642,6 +644,21 @@ end
         end
     end
 
+    if VERSION >= v"1.8"
+        @testset "type constraints on the input are observed" begin
+            let line = (@__LINE__) + 7
+                @test_warn(
+                    "$file:$line: Case 4: `_ =>` is not reachable.",
+                    @eval @match2 identity(BoolPair(true, false))::BoolPair begin
+                        BoolPair(true, _)       => 1
+                        BoolPair(_, true)       => 2
+                        BoolPair(false, false)  => 3
+                        _                       => 4 # unreachable
+                    end
+                    )
+            end
+        end
+    end
 end
 
 @testset "ensure we use `isequal` and not `==`" begin
