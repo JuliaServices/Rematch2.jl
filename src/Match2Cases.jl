@@ -224,7 +224,7 @@ end
 
 #
 # Given an action, make the "next" result, which is the action or successor
-# binder of the decision automaton.
+# node of the decision automaton.
 #
 function make_next(
     node::AutomatonNode,

@@ -1,6 +1,7 @@
 using Base: is_expr
 
 #
+#
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
 # and also during code generation, since it holds some of the context required during code
@@ -36,8 +37,8 @@ struct BinderContext
             mod,
             gensym("input_value"),
             Dict{BoundFetchPattern, Symbol}(),
-            Vector{Pair{LineNumberNode, String}}(),
-            Vector{Symbol}(),
+            Vector{Any}(),
+            Vector{Any}(),
             Dict(),
             Ref{Int}(0)
         )
@@ -515,6 +516,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
+                # Prevent the variable from being assigned to in user code
                 # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end
