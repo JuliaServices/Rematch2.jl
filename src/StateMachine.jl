@@ -127,12 +127,13 @@ function with_cases(code::CodePoint, cases::Vector{CasePartialResult})
     end
     CodePoint(cases)
 end
-function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
-    if hasfield(typeof(code), :label) && code.label !== nothing
-        "State $(id[code]) ($(pretty_name(code.label)))"
-    else
-        "State $(id[code])"
+function ensure_label!(code::CodePoint, state::BinderState)
+    if code.label isa Nothing
+        code.label = gensym("label", state)
     end
+end
+function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
+    "State $(id[code])"
 end
 function successors(c::T)::Vector{T} where { T <: AbstractCodePoint }
     @assert !(c.next isa Nothing)
@@ -183,7 +184,6 @@ function pretty(
     long && print(io, "   ")
     if action isa CasePartialResult
         print(io, " MATCH ", action.case_number, " with value ")
-        isempty(action.assigned) || long && pretty(io, action.assigned)
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
         if action isa BoundTestPattern

@@ -1,6 +1,7 @@
 using Base: ImmutableDict
 
 # Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
+# See https://github.com/JuliaLang/julia/issues/50241
 # const Assigned = ImmutableDict{Symbol, Symbol}
 
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
@@ -118,18 +119,6 @@ function pretty(io::IO, p::BoundWhereTestPattern)
     print(io, "where ")
     p.inverted && print(io, "!")
     pretty(io, p.input)
-end
-function pretty(io::IO, d::AbstractDict{K, V}) where { K, V }
-    print(io, "[")
-    first = true
-    for pair in d
-        first || print(io, ", ")
-        first = false
-        pretty(io, pair.first)
-        print(io, " => ")
-        pretty(io, pair.second)
-    end
-    print(io, "]")
 end
 
 # A pattern like ::Type which matches if the type matches.
@@ -300,7 +289,7 @@ function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
 end
 function pretty(io::IO, p::BoundFetchRangePattern)
     pretty(io, p.input)
-    print(io, "[", p.first_index, ":(length(", p.input, ")-", p.from_end, ")]")
+    print(io, "[", p.first_index, ":(length(", pretty_name(p.input), ")-", p.from_end, ")]")
 end
 
 # Compute the length of the input (tuple or array)
