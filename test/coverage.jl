@@ -362,18 +362,9 @@ end # of state machine
     end
     actual = String(take!(io))
 
-    #
-    # The debug output isn't deterministic yet, so we can't test it.
-    # We should figure out why and make it deterministic.
-    #
-    # println()
-    # println(actual)
-    # println()
     for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
         @test a == e
     end
-    # @test actual == expected
-    @test true
 
     @test_throws ErrorException Rematch2.gentemp(:a)
 

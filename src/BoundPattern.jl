@@ -1,5 +1,8 @@
 using Base: ImmutableDict
+using Base: ImmutableDict
 
+# Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
+# See https://github.com/JuliaLang/julia/issues/50241
 # Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
 # See https://github.com/JuliaLang/julia/issues/50241
 # const Assigned = ImmutableDict{Symbol, Symbol}
@@ -21,6 +24,9 @@ abstract type BoundTestPattern <: BoundPattern end
 # Functions for pretty-printing patterns and the state machine
 pretty(io::IO, x::Any) = print(io, x)
 
+# Functions for pretty-printing patterns and the state machine
+pretty(io::IO, x::Any) = print(io, x)
+
 # A pattern that always matches
 struct BoundTruePattern <: BoundPattern
     location::LineNumberNode
@@ -28,6 +34,7 @@ struct BoundTruePattern <: BoundPattern
 end
 Base.hash(::BoundTruePattern, h::UInt64) = hash(0x8cc17f34ef3bbb1d, h)
 Base.:(==)(a::BoundTruePattern, b::BoundTruePattern) = true
+pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 
 # A pattern that never matches
@@ -38,6 +45,7 @@ end
 Base.hash(::BoundFalsePattern, h::UInt64) = hash(0xeb817c7d6beb3bda, h)
 Base.:(==)(a::BoundFalsePattern, b::BoundFalsePattern) = true
 pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
+pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 
 function BoundBoolPattern(location::LineNumberNode, source::Any, b::Bool)
     b ? BoundTruePattern(location, source) : BoundFalsePattern(location, source)
@@ -47,6 +55,9 @@ end
 # Note that for a pattern variable `x` that is previously bound, `x` means
 # the same thing as `$x` or `$(x)`.  We test a constant pattern by applying
 # `isequal(input_value, pattern.value)`
+# The stored `value` has had substitutions (recorded in `assigned`) applied
+# by the caller, so that semantically equivalent tests might be syntactically
+# equivalent.
 # The stored `value` has had substitutions (recorded in `assigned`) applied
 # by the caller, so that semantically equivalent tests might be syntactically
 # equivalent.
