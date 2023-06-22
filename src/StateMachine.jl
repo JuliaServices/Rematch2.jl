@@ -130,6 +130,9 @@ end
 function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
     "State $(id[code])"
 end
+function name(code::T, id::IdDict{T, Int}) where { T <: AbstractCodePoint }
+    "State $(id[code])"
+end
 function successors(c::T)::Vector{T} where { T <: AbstractCodePoint }
     @assert !(c.next isa Nothing)
     collect(c.next)
@@ -179,7 +182,6 @@ function pretty(
     long && print(io, "   ")
     if action isa CasePartialResult
         print(io, " MATCH ", action.case_number, " with value ")
-        isempty(action.assigned) || long && pretty(io, action.assigned)
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
         if action isa BoundTestPattern
@@ -219,10 +221,6 @@ function pretty(
         long && print(io, "   ")
         print(io, " ELSE: $(name(next[2], id))")
     elseif next isa Tuple{}
-        if long
-            print(io, "\n   ")
-            print(io, " END")
-        end
     else
         error(" UNKNOWN ")
     end
