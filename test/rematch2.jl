@@ -228,9 +228,9 @@ end
     # State 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: State 18 («label_2»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == 2 ELSE: State 9 («label_5»)
-    # State 5 FETCH «where_0» := (f1)(«input_value.x»)
-    # State 6 TEST where !«where_0» ELSE: State 8 («label_4»)
+    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
+    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 6 TEST where !«where_0» ELSE: State 8 («label_5»)
     # State 7 MATCH 1 with value 1
     # State 8 («label_4») TEST «input_value.x» == 1 THEN: State 10 ELSE: State 18 («label_2»)
     # State 9 («label_5») TEST «input_value.x» == 1 ELSE: State 13 («label_3»)

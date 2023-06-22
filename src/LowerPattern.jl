@@ -7,7 +7,7 @@ end
 # return the code needed for a pattern.
 function code(bound_pattern::BoundPattern, ::BinderState)
     location = bound_pattern.location
-    error("$(location.file):$(location.line): `code` not implemented for `$(typeof(bound_pattern))`.")
+    error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)), ::$BinderState)` not implemented.")
 end
 code(bound_pattern::BoundTruePattern, state::BinderState) = true
 code(bound_pattern::BoundFalsePattern, state::BinderState) = false
@@ -46,33 +46,34 @@ function code(bound_pattern::BoundAndPattern, state::BinderState)
             (a, b) -> :($a && $b),
             bound_pattern.subpatterns)))
 end
-function code(bound_pattern::BoundFetchFieldPattern, state::BinderState)
-    tempvar = state.assignments[bound_pattern]
-    index = QuoteNode(bound_pattern.field_name)
-    :($tempvar = $getfield($(bound_pattern.input), $index))
+function code(bound_pattern::BoundFetchPattern, state::BinderState)
+    tempvar = get_temp(state, bound_pattern)
+    :($tempvar = $(code(bound_pattern)))
 end
-function code(
-    bound_pattern::BoundFetchIndexPattern,
-    state::BinderState)
-    tempvar = state.assignments[bound_pattern]
+
+function code(bound_pattern::BoundFetchPattern)
+    location = bound_pattern.location
+    error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)))` not implemented.")
+end
+function code(bound_pattern::BoundFetchFieldPattern)
+    :($getfield($(bound_pattern.input), $(QuoteNode(bound_pattern.field_name))))
+end
+function code(bound_pattern::BoundFetchIndexPattern)
     i = bound_pattern.index
     if i < 0
         i = :($length($(bound_pattern.input)) + $(i + 1))
     end
-    :($tempvar = $getindex($(bound_pattern.input), $i))
+    :($getindex($(bound_pattern.input), $i))
 end
-function code(bound_pattern::BoundFetchRangePattern, state::BinderState)
-    tempvar = state.assignments[bound_pattern]
+function code(bound_pattern::BoundFetchRangePattern)
     index = :($(bound_pattern.first_index):(length($(bound_pattern.input)) - $(bound_pattern.from_end)))
-    :($tempvar = $getindex($(bound_pattern.input), $(index)))
+    :($getindex($(bound_pattern.input), $(index)))
 end
-function code(bound_pattern::BoundFetchLengthPattern, state::BinderState)
-    tempvar = state.assignments[bound_pattern]
-    :($tempvar = $length($(bound_pattern.input)))
+function code(bound_pattern::BoundFetchLengthPattern)
+    :($length($(bound_pattern.input)))
 end
-function code(bound_pattern::BoundFetchExpressionPattern, state::BinderState)
-    tempvar = get_temp(state, bound_pattern)
-    :($tempvar = $(bound_pattern.value))
+function code(bound_pattern::BoundFetchExpressionPattern)
+    bound_pattern.value
 end
 
 # Return an expression that computes whether or not the pattern matches.
