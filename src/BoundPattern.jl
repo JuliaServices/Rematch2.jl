@@ -71,18 +71,23 @@ function Base.:(==)(a::BoundRelationalTestPattern, b::BoundRelationalTestPattern
     a.input == b.input && a.relation == b.relation && a.value == b.value
 end
 
-# A pattern that evaluates the given boolean expression given the assignments.
+# A pattern that simply checks the given boolean variable
 struct BoundWhereTestPattern <: BoundTestPattern
     location::LineNumberNode
     source::Any
-    value::Any # boolean expression to evaluate
-    assigned::ImmutableDict{Symbol, Symbol}
+    input::Symbol # variable holding the evaluated where clause
+    inverted::Bool # If the sense of the test is inverted
 end
 function Base.hash(a::BoundWhereTestPattern, h::UInt64)
-    hash((a.value, a.assigned, 0x868a8076acbe0e12), h)
+    hash((a.input, a.inverted, 0x868a8076acbe0e12), h)
 end
 function Base.:(==)(a::BoundWhereTestPattern, b::BoundWhereTestPattern)
-    a.value == b.value && a.assigned == b.assigned
+    a.input == b.input && a.inverted == b.inverted
+end
+function pretty(io::IO, p::BoundWhereTestPattern)
+    print(io, "where ")
+    p.inverted && print(io, "!")
+    pretty(io, p.input)
 end
 
 # A pattern like ::Type which matches if the type matches.
@@ -242,20 +247,36 @@ function Base.:(==)(a::BoundFetchLengthPattern, b::BoundFetchLengthPattern)
     a.input == b.input
 end
 
-# Preserve the current binding of the user variable into a fixed variable-specific temp.
-# Used to force the binding on both sides of an or-pattern to be the same.  The temp used
-# for this depends only on the variable.
-struct BoundFetchBindingPattern <: BoundFetchPattern
+# Preserve the value of the expression into a temp.
+# Used (1) to force the binding on both sides of an or-pattern to be the same, and
+# (2) to load the value of a `where` clause.
+# The stored `value` has had substitutions (recorded in `assigned`) applied by the caller,
+# so that semantically equivalent values might be syntactically equivalent.  The key
+# is used (1) to select a name for the temp, and (2) to force distinct temps to be used
+# at join points (when any of the bindings in `assigned` are phi merge points)
+struct BoundFetchExpressionPattern <: BoundFetchPattern
     location::LineNumberNode
     source::Any
-    input::Symbol    # previous binding of the variable
-    variable::Symbol # user variable to be preserved
+    value::Any    # value to be  preserved, e.g. previous binding of a variable
+    assigned::ImmutableDict{Symbol, Symbol}
+    key::Union{Nothing, Symbol}   # key to identify the temp, or user variable to be preserved
 end
-function Base.hash(a::BoundFetchBindingPattern, h::UInt64)
-    hash((a.input, a.variable, 0x53f0f6a137a891d8), h)
+function BoundFetchExpressionPattern(
+    location::LineNumberNode,
+    source::Any,
+    value::Any,
+    assigned::ImmutableDict{Symbol, Symbol})
+    key = any(p -> is_phi(p.second), assigned) ? gensym("where") : nothing
+    BoundFetchExpressionPattern(location, source, value, assigned, key)
 end
-function Base.:(==)(a::BoundFetchBindingPattern, b::BoundFetchBindingPattern)
-    a.input == b.input && a.variable == b.variable
+function Base.hash(a::BoundFetchExpressionPattern, h::UInt64)
+    hash((a.value, a.key, 0x53f0f6a137a891d8), h)
+end
+function Base.:(==)(a::BoundFetchExpressionPattern, b::BoundFetchExpressionPattern)
+    a.value == b.value && a.key == b.key
+end
+function pretty(io::IO, p::BoundFetchExpressionPattern)
+    pretty(io, p.value)
 end
 
 #

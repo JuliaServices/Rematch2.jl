@@ -233,6 +233,106 @@ end
     end) == 7
 end
 
+@testset "test for sharing where clause conjuncts" begin
+    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
+    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 6 TEST where «where_0» ELSE: State 8 («label_5»)
+    # State 7 MATCH 1 with value 1
+    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
+    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 10 TEST where «where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
+    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
+    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 13 TEST where «where_1» ELSE: State 20 («label_2»)
+    # State 14 («label_6») MATCH 2 with value 2
+    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 16 TEST where «where_0» ELSE: State 20 («label_2»)
+    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 18 TEST where «where_1» ELSE: State 20 («label_2»)
+    # State 19 MATCH 3 with value 3
+    # State 20 («label_2») MATCH 4 with value 4
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) where f1(x)            => 1
+        Foo(1, y) where f2(y)            => 2
+        Foo(x, y) where (f1(x) && f2(y)) => 3
+        _                                => 4
+    end) == 20
+end
+
+@testset "test for sharing where clause disjuncts" begin
+    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 2 FETCH «input_value.x» := «input_value».x
+    # State 3 FETCH «input_value.y» := «input_value».y
+    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
+    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 6 TEST where !«where_0» ELSE: State 8 («label_5»)
+    # State 7 MATCH 1 with value 1
+    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
+    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 10 TEST where !«where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
+    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
+    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 13 TEST where !«where_1» ELSE: State 20 («label_2»)
+    # State 14 («label_6») MATCH 2 with value 2
+    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # State 16 TEST where !«where_0» ELSE: State 20 («label_2»)
+    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
+    # State 18 TEST where !«where_1» ELSE: State 20 («label_2»)
+    # State 19 MATCH 3 with value 3
+    # State 20 («label_2») MATCH 4 with value 5
+    @test (Rematch2.@match2_count_states some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end) == 20
+end
+
+@testset "exercise the dumping code for coverage" begin
+    io = IOBuffer()
+    Rematch2.@match2_dump_states io some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end
+    @test true
+end
+
+@testset "test for correct semantics of complex where clauses" begin
+    function f1(a, b, c, d, e, f, g, h)
+        @match2 (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d) || (e || f) && !(!g || h))) => 1
+            (a, b, c, d, e, f, g, h) where ((a || b) && !(c || d) || !(!(e || !f) && !(!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (c || !d) || !((!e || f) && (!g || h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d)) || !((e || !f) && (g || !h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(!a || !b) && !(!c || !d) || (e || !f) && (g || h)) => 5
+            _ => 6
+        end
+    end
+    function f2(a, b, c, d, e, f, g, h)
+        # For reference we use the brute-force implementation of pattern-matching that just
+        # performs the tests sequentially, like writing an if-elseif-else chain.
+        Rematch2.@match (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d) || (e || f) && !(!g || h))) => 1
+            (a, b, c, d, e, f, g, h) where ((a || b) && !(c || d) || !(!(e || !f) && !(!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (c || !d) || !((!e || f) && (!g || h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(!a || !b) && (!c || d)) || !((e || !f) && (g || !h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(!a || !b) && !(!c || !d) || (e || !f) && (g || h)) => 5
+            _ => 6
+        end
+    end
+    function f3(a, b, c, d, e, f, g, h)
+        @test f1(a, b, c, d, e, f, g, h) == f2(a, b, c, d, e, f, g, h)
+    end
+    for t in Iterators.product(([false, true] for a in 1:8)...,)
+        f3(t...)
+    end
+end
+
 @testset "infer positional parameters from constructors 1" begin
     # struct T207a
     #     x; y; z

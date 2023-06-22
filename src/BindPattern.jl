@@ -25,6 +25,9 @@ struct BinderState
     # A dictionary used to intern CodePoint values in Match2Cases.
     intern::Dict
 
+    # A counter used to dispense unique integers to make prettier gensyms
+    num_gensyms::Ref{Int}
+
     function BinderState(mod::Module, input_variable::Symbol)
         new(
             mod,
@@ -32,19 +35,83 @@ struct BinderState
             Dict{BoundFetchPattern, Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
             Vector{Any}(),
-            Dict()
+            Dict(),
+            Ref{Int}(0)
         )
     end
 end
 
-function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(gensym, state.assignments, p)
+function gensym(base::String, state::BinderState)::Symbol
+    s = gensym("$(base)_$(state.num_gensyms[])")
+    state.num_gensyms[] += 1
+    s
 end
-function get_temp(state::BinderState, p::BoundFetchBindingPattern)
-    get!(() -> get_temp(state, p.variable), state.assignments, p)
+gensym(base::String) = Base.gensym(base)
+
+#
+# Generate a fresh synthetic variable whose name hints at its purpose.
+#
+function gentemp(p::BoundFetchPattern)
+    error("not implemented: gentemp(::$(typeof(p)))")
+end
+function gentemp(p::BoundFetchFieldPattern)
+    gensym(string(simple_name(p.input), ".", p.field_name))
+end
+function gentemp(p::BoundFetchIndexPattern)
+    gensym(string(simple_name(p.input), "[", p.index, "]"))
+end
+function gentemp(p::BoundFetchRangePattern)
+    gensym(string(simple_name(p.input), "[", p.first_index, ":(length-", p.from_end, ")]"))
+end
+function gentemp(p::BoundFetchLengthPattern)
+    gensym(string("length(", simple_name(p.input), ")"))
+end
+
+#
+# Get the "base" name of a symbol (remove synthetic ## additions)
+#
+function simple_name(s::Symbol)
+    simple_name(string(s))
+end
+function simple_name(n::String)
+    if startswith(n, "##")
+        n1 = n[3:length(n)]
+        last = findlast('#', n1)
+        isnothing(last) ? n1 : n1[1:prevind(n1, last)]
+    else
+        n
+    end
+end
+
+#
+# The following are special bindings used to handle the point where
+# a disjunction merges when the two sides have different bindings.
+# In dataflow-analysis terms, this is represented by a phi function.
+# This is a synthetic variable to hold the value that should be used
+# to hold the value after the merge point.
+#
+const phi_prefix = "saved_"
+is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
+function get_temp(state::BinderState, p::BoundFetchPattern)
+    get!(() -> gentemp(p), state.assignments, p)
+end
+function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
+    get!(state.assignments, p) do
+        if p.key isa Symbol
+            sym = get_temp(state, p.key)
+            @assert is_phi(sym)
+        else
+            sym = gensym("where", state)
+        end
+        sym
+    end
 end
 function get_temp(state::BinderState, p::Symbol)
-    get!(() -> gensym(string("saved_", p)), state.assignments, p)
+    get!(state.assignments, p) do
+        sym = gensym(string(phi_prefix, p), state)
+        @assert is_phi(sym)
+        sym
+    end
 end
 
 # We restrict the struct pattern to require something that looks like
@@ -118,7 +185,7 @@ function bind_pattern!(
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
         # Support `::T where ...` even though the where clause parses as
         # part of the type.
-        pattern = join_where_clause(pattern, where_clause, location, assigned)
+        pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
     elseif @capture(source, subpattern_::T_)
         T, where_clause = split_where(T, location)
@@ -127,7 +194,7 @@ function bind_pattern!(
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
         # Support `::T where ...` even though the where clause parses as
         # part of the type.
-        pattern = join_where_clause(pattern, where_clause, location, assigned)
+        pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
     elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
         # struct pattern.
@@ -197,11 +264,11 @@ function bind_pattern!(
             else
                 temp = get_temp(state, key)
                 if v1 != temp
-                    save = BoundFetchBindingPattern(location, source, v1, key)
+                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), key)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
-                    save = BoundFetchBindingPattern(location, source, v2, key)
+                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), key)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
@@ -272,7 +339,7 @@ function bind_pattern!(
         # guard
         pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         guard0, assigned0 = subst_patvars(guard, assigned)
-        pattern1 = BoundWhereTestPattern(location, guard, guard0, assigned0)
+        pattern1 = shred_where_clause(guard, false, location, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
     else
@@ -303,12 +370,11 @@ function split_where(T, location)
     return (type, where_clause)
 end
 
-function join_where_clause(pattern, where_clause, location, assigned)
+function join_where_clause(pattern, where_clause, location, state, assigned)
     if where_clause === nothing
         return pattern
     else
-        guard0, assigned0 = subst_patvars(where_clause, assigned)
-        pattern1 = BoundWhereTestPattern(location, where_clause, guard0, assigned0)
+        pattern1 = shred_where_clause(where_clause, false, location, state, assigned)
         return BoundAndPattern(location, where_clause, BoundPattern[pattern, pattern1])
     end
 end
@@ -353,7 +419,37 @@ function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, locati
         error("$(location.file):$(location.line): Cannot infer which $len of the $(length(members)) fields to match from any positional constructor for `$type`.")
     end
 end
+
 dropfirst(a) = a[2:length(a)]
+
+# Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
+# we push negation operators down.  This permits us to share the parts of a where clause
+# between different rules.
+#
+function shred_where_clause(
+    guard::Any,
+    inverted::Bool,
+    location::LineNumberNode,
+    state::BinderState,
+    assigned::ImmutableDict{Symbol, Symbol})::BoundPattern
+    if @capture(guard, !g_)
+        return shred_where_clause(g, !inverted, location, state, assigned)
+    elseif @capture(guard, g1_ && g2_) || @capture(guard, g1_ || g2_)
+        left = shred_where_clause(g1, inverted, location, state, assigned)
+        right = shred_where_clause(g2, inverted, location, state, assigned)
+        # DeMorgan's law:
+        #     `!(a && b)` => `!a || !b`
+        #     `!(a || b)` => `!a && !b`
+        result_type = (inverted == (guard.head == :&&)) ? BoundOrPattern : BoundAndPattern
+        return result_type(location, guard, BoundPattern[left, right])
+    else
+        (guard0, assigned0) = subst_patvars(guard, assigned)
+        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0)
+        temp = get_temp(state, fetch)
+        test = BoundWhereTestPattern(location, guard, temp, inverted)
+        return BoundAndPattern(location, guard, BoundPattern[fetch, test])
+    end
+end
 
 #
 # Replace each pattern variable reference with the temporary variable holding the
