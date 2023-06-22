@@ -1,9 +1,11 @@
 function handle_match_eq(location::LineNumberNode, mod::Module, expr)
-    @capture(expr, pattern_ = value_) ||
+    is_expr(expr, :(=), 2) ||
         error(string("Unrecognized @match syntax: ", expr))
+    pattern = expr.args[1]
+    value = expr.args[2]
 
-    input_variable::Symbol = gensym("input_value")
-    state = BinderState(mod, input_variable)
+    state = BinderState(mod)
+    input_variable::Symbol = state.input_variable
     (bound_pattern, assigned) = bind_pattern!(
         location, pattern, input_variable, state, ImmutableDict{Symbol, Symbol}())
 
@@ -66,6 +68,8 @@ Usage:
 
 Return `result` for the first matching `pattern`.
 If there are no matches, throw `MatchFailure`.
+This uses a brute-force code gen strategy, like using a series of if-else statements.
+It is used for testing purposes, as a reference for correct semantics.
 """
 macro match(value, cases)
     handle_match_cases(__source__, __module__, value, cases)

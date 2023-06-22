@@ -1,25 +1,6 @@
 
-# This is very helpful for debugging the behavior of macros
-macro print_expand(x)
-    quote
-        let
-            a = @macroexpand $(esc(x))
-            # println("\nexpanded:")
-            # println(a)
-            b = MacroTools.prewalk(MacroTools.rmlines, a)
-            # println("\nrmlines:")
-            # println(b)
-            c = MacroTools.prewalk(MacroTools.unblock, b)
-            # println("\nunblock:")
-            # println(c)
-            d = MacroTools.alias_gensyms(c)
-            # println("alias_gensyms:")
-            println(d)
-        end
-    end
-end
-
 const get_current_exceptions = (VERSION >= v"1.7") ? current_exceptions : Base.catch_stack
+
 macro where_thrown()
     quote
         stack = $get_current_exceptions()

@@ -19,7 +19,7 @@ function code(bound_pattern::BoundRelationalTestPattern, state::BinderState)
     :($(bound_pattern.relation)($(bound_pattern.input), $(bound_pattern.value)))
 end
 function code(bound_pattern::BoundWhereTestPattern, state::BinderState)
-    bound_pattern.value
+    bound_pattern.inverted ? :(!$(bound_pattern.input)) : bound_pattern.input
 end
 function code(bound_pattern::BoundTypeTestPattern, state::BinderState)
     # We assert that the type is invariant.  Because this mutates state.assertions,
@@ -70,9 +70,9 @@ function code(bound_pattern::BoundFetchLengthPattern, state::BinderState)
     tempvar = state.assignments[bound_pattern]
     :($tempvar = $length($(bound_pattern.input)))
 end
-function code(bound_pattern::BoundFetchBindingPattern, state::BinderState)
+function code(bound_pattern::BoundFetchExpressionPattern, state::BinderState)
     tempvar = get_temp(state, bound_pattern)
-    :($tempvar = $(bound_pattern.input))
+    :($tempvar = $(bound_pattern.value))
 end
 
 # Return an expression that computes whether or not the pattern matches.

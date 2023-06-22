@@ -1,8 +1,11 @@
+using Base: is_expr
 
+#
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
 # and also during code generation, since it holds some of the state required during code
 # generation (such as assertions and assignments)
+#
 struct BinderState
     # The module containing the pattern, in which types appearing in the
     # pattern should be bound.
@@ -25,32 +28,131 @@ struct BinderState
     # A dictionary used to intern CodePoint values in Match2Cases.
     intern::Dict
 
-    function BinderState(mod::Module, input_variable::Symbol)
+    # A counter used to dispense unique integers to make prettier gensyms
+    num_gensyms::Ref{Int}
+
+    function BinderState(mod::Module)
         new(
             mod,
-            input_variable,
+            gensym("input_value"),
             Dict{BoundFetchPattern, Symbol}(),
             Vector{Pair{LineNumberNode, String}}(),
-            Vector{Any}(),
-            Dict()
+            Vector{Symbol}(),
+            Dict(),
+            Ref{Int}(0)
         )
     end
 end
-
-function get_temp(state::BinderState, p::BoundFetchPattern)
-    get!(gensym, state.assignments, p)
+function gensym(base::String, state::BinderState)::Symbol
+    s = gensym("$(base)_$(state.num_gensyms[])")
+    state.num_gensyms[] += 1
+    s
 end
-function get_temp(state::BinderState, p::BoundFetchBindingPattern)
-    get!(() -> get_temp(state, p.variable), state.assignments, p)
+gensym(base::String) = Base.gensym(base)
+
+#
+# Pretty-printing utilities helpful for displaying the state machine
+#
+pretty(io::IO, p::BoundPattern, state::BinderState) = pretty(io, p)
+function pretty(io::IO, p::BoundFetchPattern, state::BinderState)
+    temp = get_temp(state, p)
+    pretty(io, temp)
+    print(io, " := ")
+    pretty(io, p)
+end
+function pretty(io::IO, s::Symbol)
+    print(io, pretty_name(s))
+end
+function pretty_name(s::Symbol)
+    s = string(s)
+    if startswith(s, "##")
+        string("«", simple_name(s), "»")
+    else
+        s
+    end
+end
+struct FrenchName; s::Symbol; end
+Base.show(io::IO, x::FrenchName) = print(io, pretty_name(x.s))
+function pretty(io::IO, expr::Expr)
+    b = MacroTools.prewalk(MacroTools.rmlines, expr)
+    c = MacroTools.prewalk(MacroTools.unblock, b)
+    print(io, MacroTools.postwalk(c) do var
+        (var isa Symbol) ? FrenchName(var) : var
+    end)
+end
+
+#
+# Get the "base" name of a symbol (remove synthetic ## additions)
+#
+function simple_name(s::Symbol)
+    simple_name(string(s))
+end
+function simple_name(n::String)
+    if startswith(n, "##")
+        n1 = n[3:length(n)]
+        last = findlast('#', n1)
+        (last isa Int) ? n1[1:(last-1)] : n1
+    else
+        n
+    end
+end
+
+#
+# Generate a fresh synthetic variable whose name hints at its purpose.
+#
+function gentemp(p::BoundFetchPattern)
+    error("not implemented: gentemp(::$(typeof(p)))")
+end
+function gentemp(p::BoundFetchFieldPattern)
+    gensym(string(simple_name(p.input), ".", p.field_name))
+end
+function gentemp(p::BoundFetchIndexPattern)
+    gensym(string(simple_name(p.input), "[", p.index, "]"))
+end
+function gentemp(p::BoundFetchRangePattern)
+    gensym(string(simple_name(p.input), "[", p.first_index, ":(length-", p.from_end, ")]"))
+end
+function gentemp(p::BoundFetchLengthPattern)
+    gensym(string("length(", simple_name(p.input), ")"))
+end
+
+#
+# The following are special bindings used to handle the point where
+# a disjunction merges when the two sides have different bindings.
+# In dataflow-analysis terms, this is represented by a phi function.
+# This is a synthetic variable to hold the value that should be used
+# to hold the value after the merge point.
+#
+const phi_prefix = "saved_"
+is_phi(s::Symbol) = startswith(simple_name(s), phi_prefix)
+function get_temp(state::BinderState, p::BoundFetchPattern)
+    get!(() -> gentemp(p), state.assignments, p)
+end
+function get_temp(state::BinderState, p::BoundFetchExpressionPattern)
+    get!(state.assignments, p) do
+        if p.key isa Symbol
+            sym = get_temp(state, p.key)
+            @assert is_phi(sym)
+        else
+            sym = gensym("where", state)
+        end
+        sym
+    end
 end
 function get_temp(state::BinderState, p::Symbol)
-    get!(() -> gensym(string("saved_", p)), state.assignments, p)
+    get!(state.assignments, p) do
+        sym = gensym(string(phi_prefix, p), state)
+        @assert is_phi(sym)
+        sym
+    end
 end
 
+#
 # We restrict the struct pattern to require something that looks like
 # a type name before the open paren.  This improves the diagnostics
 # for error cases like `(a + b)`, which produces an analogous Expr node
 # but with `+` as the operator.
+#
 is_possible_type_name(t) = false
 is_possible_type_name(t::Symbol) = Base.isidentifier(t)
 function is_possible_type_name(t::Expr)
@@ -73,23 +175,31 @@ function bind_pattern!(
         # wildcard pattern
         pattern = BoundTruePattern(location, source)
 
-    elseif (!(source isa Expr || source isa Symbol) ||
-        @capture(source, _quote_macrocall) ||
-        @capture(source, Symbol(_)) # questionable
-        )
+    elseif !(source isa Expr || source isa Symbol)
         # a constant
         pattern = BoundEqualValueTestPattern(
             location, source, input, source, ImmutableDict{Symbol, Symbol}())
 
-    elseif source isa Expr && source.head == :$
+    elseif is_expr(source, :macrocall) ||
+        is_expr(source, :quote) ||
+        (is_expr(source, :call) && source.args[1] == :Symbol) # the type `Symbol`
+        # Objects of Julia expression tree types.  We treat them as constants, but
+        # we should really match on their structure.  We might treat regular expressions
+        # specially, handle interpolation inside, etc.
+        # See #6, #30, #31, #32
+        pattern = BoundEqualValueTestPattern(
+            location, source, input, source, ImmutableDict{Symbol, Symbol}())
+
+    elseif is_expr(source, :$)
         # an interpolation
         interpolation = source.args[1]
         interpolation0, assigned0 = subst_patvars(interpolation, assigned)
         pattern = BoundEqualValueTestPattern(
             location, interpolation, input, interpolation0, assigned0)
 
-    elseif @capture(source, varsymbol_Symbol)
+    elseif source isa Symbol
         # variable pattern (just a symbol)
+        varsymbol::Symbol = source
         if haskey(assigned, varsymbol)
             # previously introduced variable.  Get the symbol holding its value
             var_value = assigned[varsymbol]
@@ -102,7 +212,9 @@ function bind_pattern!(
             pattern = BoundTruePattern(location, source)
         end
 
-    elseif @capture(source, ::T_)
+    elseif is_expr(source, :(::), 1)
+        # ::type
+        T = source.args[1]
         T, where_clause = split_where(T, location)
         # bind type at macro expansion time.  It will be verified at runtime.
         bound_type = nothing
@@ -120,19 +232,24 @@ function bind_pattern!(
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
         # Support `::T where ...` even though the where clause parses as
         # part of the type.
-        pattern = join_where_clause(pattern, where_clause, location, assigned)
+        pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
-    elseif @capture(source, subpattern_::T_)
+    elseif is_expr(source, :(::), 2)
+        subpattern = source.args[1]
+        T = source.args[2]
         T, where_clause = split_where(T, location)
         pattern1, assigned = bind_pattern!(location, :(::($T)), input, state, assigned)
         pattern2, assigned = bind_pattern!(location, subpattern, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
         # Support `::T where ...` even though the where clause parses as
         # part of the type.
-        pattern = join_where_clause(pattern, where_clause, location, assigned)
+        pattern = join_where_clause(pattern, where_clause, location, state, assigned)
 
-    elseif @capture(source, T_(subpatterns__)) && is_possible_type_name(T)
+    elseif is_expr(source, :call) && is_possible_type_name(source.args[1])
         # struct pattern.
+        # TypeName(patterns...)
+        T = source.args[1]
+        subpatterns = source.args[2:length(source.args)]
         len = length(subpatterns)
         named_fields = [pat.args[1] for pat in subpatterns
                                     if (pat isa Expr) && pat.head == :kw]
@@ -172,10 +289,8 @@ function bind_pattern!(
                 end
             end
 
-            # TODO: track the field type if it was declared
-            fetch = BoundFetchFieldPattern(location, pattern_source, input, field_name)
-            push!(patterns, fetch)
-            field_temp = get_temp(state, fetch)
+            field_temp = push_pattern!(patterns, state,
+                BoundFetchFieldPattern(location, pattern_source, input, field_name))
             bound_subpattern, assigned = bind_pattern!(
                 location, pattern_source, field_temp, state, assigned)
             push!(patterns, bound_subpattern)
@@ -183,16 +298,22 @@ function bind_pattern!(
 
         pattern = BoundAndPattern(location, source, patterns)
 
-    elseif @capture(source, subpattern1_ && subpattern2_) ||
-          (@capture(source, f_(subpattern1_, subpattern2_)) && f == :&)
-        # conjunction: either `(a && b)` or `(a & b)` where `a` and `b` are patterns.
+    elseif is_expr(source, :(&&), 2)
+        # conjunction: `(a && b)` where `a` and `b` are patterns.
+        subpattern1 = source.args[1]
+        subpattern2 = source.args[2]
         bp1, assigned = bind_pattern!(location, subpattern1, input, state, assigned)
         bp2, assigned = bind_pattern!(location, subpattern2, input, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[bp1, bp2])
 
-    elseif @capture(source, subpattern1_ || subpattern2_) ||
-          (@capture(source, f_(subpattern1_, subpattern2_)) && f == :|)
-        # disjunction: either `(a || b)` or `(a | b)` where `a` and `b` are patterns.
+    elseif is_expr(source, :call, 3) && source.args[1] == :&
+        # conjunction: `(a & b)` where `a` and `b` are patterns.
+        return bind_pattern!(location, Expr(:(&&), source.args[2], source.args[3]), input, state, assigned)
+
+    elseif is_expr(source, :(||), 2)
+        # disjunction: `(a || b)` where `a` and `b` are patterns.
+        subpattern1 = source.args[1]
+        subpattern2 = source.args[2]
         bp1, assigned1 = bind_pattern!(location, subpattern1, input, state, assigned)
         bp2, assigned2 = bind_pattern!(location, subpattern2, input, state, assigned)
 
@@ -207,11 +328,11 @@ function bind_pattern!(
             else
                 temp = get_temp(state, key)
                 if v1 != temp
-                    save = BoundFetchBindingPattern(location, source, v1, key)
+                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), key)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
-                    save = BoundFetchBindingPattern(location, source, v2, key)
+                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), key)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
@@ -219,9 +340,14 @@ function bind_pattern!(
         end
         pattern = BoundOrPattern(location, source, BoundPattern[bp1, bp2])
 
-    elseif @capture(source, [subpatterns__]) || @capture(source, (subpatterns__,))
+    elseif is_expr(source, :call, 3) && source.args[1] == :|
+        # disjunction: `(a | b)` where `a` and `b` are patterns.
+        return bind_pattern!(location, Expr(:(||), source.args[2], source.args[3]), input, state, assigned)
+
+    elseif is_expr(source, :tuple) || is_expr(source, :vect)
         # array or tuple
-        splat_count = count(s -> s isa Expr && s.head == :..., subpatterns)
+        subpatterns = source.args
+        splat_count = count(s -> is_expr(s, :...), subpatterns)
         if splat_count > 1
             error("$(location.file):$(location.line): More than one `...` in " *
                   "pattern `$source`.")
@@ -234,15 +360,9 @@ function bind_pattern!(
         push!(patterns, pattern0)
         len = length(subpatterns)
 
-        ### TODO: make this more dry. Currently we repeat
-        ###    fetch_foo = Fetch...(...)
-        ###    foo_temp = get_temp(state, fetch_foo)
-        ###    push!(patterns, fetch_foo)
-
         # produce a check that the length of the input is sufficient
-        fetch_length = BoundFetchLengthPattern(location, source, input)
-        length_temp = get_temp(state, fetch_length)
-        push!(patterns, fetch_length)
+        length_temp = push_pattern!(patterns, state,
+            BoundFetchLengthPattern(location, source, input))
         check_length =
             if splat_count != 0
                 BoundRelationalTestPattern(
@@ -260,18 +380,15 @@ function bind_pattern!(
                 @assert length(subpattern.args) == 1
                 @assert !seen_splat
                 seen_splat = true
-                fetch_range = BoundFetchRangePattern(
-                    location, subpattern, input, i, len-i)
-                push!(patterns, fetch_range)
-                range_temp = get_temp(state, fetch_range)
+                range_temp = push_pattern!(patterns, state,
+                    BoundFetchRangePattern(location, subpattern, input, i, len-i))
                 patterni, assigned = bind_pattern!(
                     location, subpattern.args[1], range_temp, state, assigned)
                 push!(patterns, patterni)
             else
                 index = seen_splat ? (i - len - 1) : i
-                fetch_index = BoundFetchIndexPattern(location, subpattern, input, index)
-                push!(patterns, fetch_index)
-                index_temp = get_temp(state, fetch_index)
+                index_temp = push_pattern!(patterns, state,
+                    BoundFetchIndexPattern(location, subpattern, input, index))
                 patterni, assigned = bind_pattern!(
                     location, subpattern, index_temp, state, assigned)
                 push!(patterns, patterni)
@@ -279,11 +396,12 @@ function bind_pattern!(
         end
         pattern = BoundAndPattern(location, source, patterns)
 
-    elseif @capture(source, subpattern_ where guard_)
-        # guard
+    elseif is_expr(source, :where, 2)
+        # subpattern where guard
+        subpattern = source.args[1]
+        guard = source.args[2]
         pattern0, assigned = bind_pattern!(location, subpattern, input, state, assigned)
-        guard0, assigned0 = subst_patvars(guard, assigned)
-        pattern1 = BoundWhereTestPattern(location, guard, guard0, assigned0)
+        pattern1 = shred_where_clause(guard, false, location, state, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
     else
@@ -291,6 +409,12 @@ function bind_pattern!(
     end
 
     return (pattern, assigned)
+end
+
+function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
+    temp = get_temp(state, pat)
+    push!(patterns, pat)
+    temp
 end
 
 function split_where(T, location)
@@ -308,12 +432,11 @@ function split_where(T, location)
     return (type, where_clause)
 end
 
-function join_where_clause(pattern, where_clause, location, assigned)
+function join_where_clause(pattern, where_clause, location, state, assigned)
     if where_clause === nothing
         return pattern
     else
-        guard0, assigned0 = subst_patvars(where_clause, assigned)
-        pattern1 = BoundWhereTestPattern(location, where_clause, guard0, assigned0)
+        pattern1 = shred_where_clause(where_clause, false, location, state, assigned)
         return BoundAndPattern(location, where_clause, BoundPattern[pattern, pattern1])
     end
 end
@@ -331,13 +454,41 @@ function fieldnames(type::Type)
     Base.fieldnames(type)
 end
 
+# Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
+# we push negation operators down.  This permits us to share the parts of a where clause
+# between different rules.
+#
+function shred_where_clause(
+    guard::Any,
+    inverted::Bool,
+    location::LineNumberNode,
+    state::BinderState,
+    assigned::ImmutableDict{Symbol, Symbol})::BoundPattern
+    if @capture(guard, !g_)
+        return shred_where_clause(g, !inverted, location, state, assigned)
+    elseif @capture(guard, g1_ && g2_) || @capture(guard, g1_ || g2_)
+        left = shred_where_clause(g1, inverted, location, state, assigned)
+        right = shred_where_clause(g2, inverted, location, state, assigned)
+        # DeMorgan's law:
+        #     `!(a && b)` => `!a || !b`
+        #     `!(a || b)` => `!a && !b`
+        result_type = (inverted == (guard.head == :&&)) ? BoundOrPattern : BoundAndPattern
+        return result_type(location, guard, BoundPattern[left, right])
+    else
+        (guard0, assigned0) = subst_patvars(guard, assigned)
+        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0)
+        temp = get_temp(state, fetch)
+        test = BoundWhereTestPattern(location, guard, temp, inverted)
+        return BoundAndPattern(location, guard, BoundPattern[fetch, test])
+    end
+end
+
 #
 # Replace each pattern variable reference with the temporary variable holding the
 # value that corresponds to that pattern variable.
 #
 function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
     new_assigned = ImmutableDict{Symbol, Symbol}()
-    # postwalk(f, x) = walk(x, x -> postwalk(f, x), f)
     new_expr = MacroTools.postwalk(expr) do patvar
         if patvar isa Symbol
             tmpvar = get(assigned, patvar, nothing)
@@ -346,6 +497,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                     new_assigned = ImmutableDict{Symbol, Symbol}(
                         new_assigned, patvar, tmpvar)
                 end
+                # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end
         end
