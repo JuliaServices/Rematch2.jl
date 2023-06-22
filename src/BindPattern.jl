@@ -1,10 +1,12 @@
 using Base: is_expr
 
 #
+#
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
 # and also during code generation, since it holds some of the state required during code
 # generation (such as assertions and assignments)
+#
 #
 struct BinderState
     # The module containing the pattern, in which types appearing in the
@@ -137,10 +139,12 @@ function get_temp(state::BinderState, p::BoundFetchExpressionPattern)::Symbol
 end
 
 #
+#
 # We restrict the struct pattern to require something that looks like
 # a type name before the open paren.  This improves the diagnostics
 # for error cases like `(a + b)`, which produces an analogous Expr node
 # but with `+` as the operator.
+#
 #
 is_possible_type_name(t) = false
 is_possible_type_name(t::Symbol) = Base.isidentifier(t)
@@ -270,6 +274,8 @@ function bind_pattern!(
 
             field_temp = push_pattern!(patterns, state,
                 BoundFetchFieldPattern(location, pattern_source, input, field_name))
+            field_temp = push_pattern!(patterns, state,
+                BoundFetchFieldPattern(location, pattern_source, input, field_name))
             bound_subpattern, assigned = bind_pattern!(
                 location, pattern_source, field_temp, state, assigned)
             push!(patterns, bound_subpattern)
@@ -343,6 +349,8 @@ function bind_pattern!(
         # produce a check that the length of the input is sufficient
         length_temp = push_pattern!(patterns, state,
             BoundFetchLengthPattern(location, source, input))
+        length_temp = push_pattern!(patterns, state,
+            BoundFetchLengthPattern(location, source, input))
         check_length =
             if splat_count != 0
                 BoundRelationalTestPattern(
@@ -362,11 +370,15 @@ function bind_pattern!(
                 seen_splat = true
                 range_temp = push_pattern!(patterns, state,
                     BoundFetchRangePattern(location, subpattern, input, i, len-i))
+                range_temp = push_pattern!(patterns, state,
+                    BoundFetchRangePattern(location, subpattern, input, i, len-i))
                 patterni, assigned = bind_pattern!(
                     location, subpattern.args[1], range_temp, state, assigned)
                 push!(patterns, patterni)
             else
                 index = seen_splat ? (i - len - 1) : i
+                index_temp = push_pattern!(patterns, state,
+                    BoundFetchIndexPattern(location, subpattern, input, index))
                 index_temp = push_pattern!(patterns, state,
                     BoundFetchIndexPattern(location, subpattern, input, index))
                 patterni, assigned = bind_pattern!(
@@ -389,6 +401,12 @@ function bind_pattern!(
     end
 
     return (pattern, assigned)
+end
+
+function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
+    temp = get_temp(state, pat)
+    push!(patterns, pat)
+    temp
 end
 
 function push_pattern!(patterns::Vector{BoundPattern}, state::BinderState, pat::BoundFetchPattern)
@@ -506,6 +524,7 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
+                # Prevent the variable from being assigned to in user code
                 # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end
