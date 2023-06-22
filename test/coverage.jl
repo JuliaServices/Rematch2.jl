@@ -16,7 +16,7 @@ State 1
   1: «input_value» == 1 => 1
   2: («input_value» isa Main.Rematch2Tests.Foo && «input_value.x» := «input_value».x && «input_value.y» := «input_value».y && «input_value.y» == «input_value.x») => 2
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   5: («input_value» isa Tuple && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[-1]» := «input_value»[-1] && «where_0» := (e).q1 && where «where_0») => «input_value[-1]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && «where_1» := (e).q2 && where «where_1») => 7
@@ -35,7 +35,7 @@ State 2
 State 3
   2: («input_value» isa Main.Rematch2Tests.Foo && «input_value.x» := «input_value».x && «input_value.y» := «input_value».y && «input_value.y» == «input_value.x») => 2
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   5: («input_value» isa Tuple && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[-1]» := «input_value»[-1] && «where_0» := (e).q1 && where «where_0») => «input_value[-1]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && «where_1» := (e).q2 && where «where_1») => 7
@@ -190,7 +190,7 @@ State 25
     MATCH 12 with value 3
 State 26
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   5: («input_value» isa Tuple && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[-1]» := «input_value»[-1] && «where_0» := (e).q1 && where «where_0») => «input_value[-1]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && «where_1» := (e).q2 && where «where_1») => 7
@@ -204,7 +204,7 @@ State 27
   3: true => 3
     MATCH 3 with value 3
 State 28
-  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («input_value» isa AbstractArray && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   5: («input_value» isa Tuple && «length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[-1]» := «input_value»[-1] && «where_0» := (e).q1 && where «where_0») => «input_value[-1]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && «where_1» := (e).q2 && where «where_1») => 7
@@ -215,21 +215,21 @@ State 28
     THEN: State 29 (fall through)
     ELSE: State 33
 State 29
-  4: («length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («length(input_value)» := length(«input_value») && «length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   13: true => 10
     FETCH «length(input_value)» := length(«input_value»)
     NEXT: State 30 (fall through)
 State 30
-  4: («length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]) => «input_value[2:(length-1)]»
+  4: («length(input_value)» >= 2 && «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
   6: («input_value» == 6 || «input_value» == 7) => 6
   13: true => 10
     TEST «length(input_value)» >= 2
     THEN: State 31 (fall through)
     ELSE: State 40
 State 31
-  4: «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)] => «input_value[2:(length-1)]»
-    FETCH «input_value[2:(length-1)]» := «input_value»[2:(length(##input_value#1398)-1)]
+  4: «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)] => «input_value[2:(length-1)]»
+    FETCH «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]
     NEXT: State 32 (fall through)
 State 32
   4: true => «input_value[2:(length-1)]»

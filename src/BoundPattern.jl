@@ -289,7 +289,7 @@ function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
 end
 function pretty(io::IO, p::BoundFetchRangePattern)
     pretty(io, p.input)
-    print(io, "[", p.first_index, ":(length(", p.input, ")-", p.from_end, ")]")
+    print(io, "[", p.first_index, ":(length(", pretty_name(p.input), ")-", p.from_end, ")]")
 end
 
 # Compute the length of the input (tuple or array)
