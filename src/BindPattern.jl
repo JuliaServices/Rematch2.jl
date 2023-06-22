@@ -550,7 +550,6 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
                 # Prevent the variable from being assigned to in user code
-                # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end
         end
