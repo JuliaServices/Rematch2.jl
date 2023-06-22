@@ -360,13 +360,10 @@ end # of state machine
         Foo(x, y) where (f1(x) && f2(y)) => 3
     end
     actual = String(take!(io))
-    # println(actual)
 
     for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
         @test a == e
     end
-    # @test actual == expected
-    @test true
 end
 
 @testset "test @match2_dumpall for code coverage" begin
