@@ -5,38 +5,38 @@ function bind_case(
     case_number::Int,
     location::LineNumberNode,
     case,
-    state::BinderState)::CasePartialResult
+    binder::BinderContext)::CasePartialResult
     while case isa Expr && case.head == :macrocall
         # expand top-level macros only
-        case = macroexpand(state.mod, case, recursive=false)
+        case = macroexpand(binder.mod, case, recursive=false)
     end
 
     is_expr(case, :call, 3) && case.args[1] == :(=>) ||
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     pattern = case.args[2]
     result = case.args[3]
-    (pattern, result) = adjust_case_for_return_macro(state.mod, pattern, result)
+    (pattern, result) = adjust_case_for_return_macro(binder.mod, pattern, result)
     bound_pattern, assigned = bind_pattern!(
-        location, pattern, state.input_variable, state, ImmutableDict{Symbol, Symbol}())
+        location, pattern, binder.input_variable, binder, ImmutableDict{Symbol, Symbol}())
     result0, assigned0 = subst_patvars(result, assigned)
     return CasePartialResult(case_number, location, pattern, bound_pattern, assigned0, result0)
 end
 
 #
-# Build the state machine and return its entry point.
+# Build the decision automaton and return its entry point.
 #
-function build_state_machine_core(
+function build_decision_automaton_core(
     value,
     source_cases::Vector{Any},
     location::LineNumberNode,
-    state::BinderState)::CodePoint
+    binder::BinderContext)::AutomatonNode
     cases = CasePartialResult[]
     for case in source_cases
         if case isa LineNumberNode
             location = case
         else
-            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, state)
-            bound_case = simplify(bound_case, state)
+            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, binder)
+            bound_case = simplify(bound_case, binder)
             push!(cases, bound_case)
         end
     end
@@ -44,37 +44,37 @@ function build_state_machine_core(
     # Track the set of reachable cases (by index)
     reachable = Set{Int}()
 
-    # Make an entry point for the state machine
-    entry = CodePoint(cases)
+    # Make an entry point for the decision automaton
+    entry = AutomatonNode(cases)
 
-    # Build the state machine with the given entry point
-    work_queue = Set{CodePoint}([entry])
+    # Build the decision automaton with the given entry point
+    work_queue = Set{AutomatonNode}([entry])
     while !isempty(work_queue)
-        code = pop!(work_queue)
-        if code.action isa Nothing
-            set_next!(code, state)
-            @assert code.action !== nothing
-            if code.action isa CasePartialResult
-                push!(reachable, code.action.case_number)
+        node = pop!(work_queue)
+        if node.action isa Nothing
+            set_next!(node, binder)
+            @assert node.action !== nothing
+            if node.action isa CasePartialResult
+                push!(reachable, node.action.case_number)
             end
-            next = code.next
+            next = node.next
             @assert next !== nothing
-            succ = successors(code)
+            succ = successors(node)
             for i in 1:length(succ)
                 push!(work_queue, succ[i])
                 # we will fall through to the true branch if possible and jump to
                 # the false branch.  So we need a label for the false side.
-                i != 1 && ensure_label!(succ[i], state)
+                i != 1 && ensure_label!(succ[i], binder)
             end
         else
             # We will need a label because it has
             # two predecessors in the generated code, and one of them will
             # have to jump to it rather than falling through
-            next = code.next
+            next = node.next
             @assert next !== nothing
-            ensure_label!(code, state)
+            ensure_label!(node, binder)
         end
-        @assert code.action !== nothing
+        @assert node.action !== nothing
     end
 
     # Warn if there were any unreachable cases
@@ -92,12 +92,12 @@ end
 #
 # Generate all of the code given the entry point
 #
-function generate_code(entry::CodePoint, value, location::LineNumberNode, state::BinderState)
+function generate_code(entry::AutomatonNode, value, location::LineNumberNode, binder::BinderContext)
     result_variable = gensym("match_result")
     result_label = gensym("completed")
-    emit = Any[location, :($(state.input_variable) = $value)]
-    togen = CodePoint[entry]
-    generated = Set{CodePoint}()
+    emit = Any[location, :($(binder.input_variable) = $value)]
+    togen = AutomatonNode[entry]
+    generated = Set{AutomatonNode}()
 
     while !isempty(togen)
         pc = pop!(togen)
@@ -114,13 +114,13 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
             push!(emit, :(@goto $result_label))
         elseif action isa BoundFetchPattern
             push!(emit, action.location)
-            push!(emit, code(action, state))
-            (next::CodePoint,) = pc.next
+            push!(emit, code(action, binder))
+            (next::AutomatonNode,) = pc.next
             if next in generated
                 @assert next.label isa Symbol
                 push!(emit, :(@goto $(next.label)))
             else
-                # we don't need a `goto` for the next state here:
+                # we don't need a `goto` for the next node here:
                 # it hasn't been generated yet, and we're pushing
                 # it on the stack to be generated next.  We'll just
                 # fall through to its code.
@@ -130,7 +130,7 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
             push!(emit, action.location)
             next_true, next_false = pc.next
             @assert next_false.label isa Symbol
-            push!(emit, :($(code(action, state)) || @goto $(next_false.label)))
+            push!(emit, :($(code(action, binder)) || @goto $(next_false.label)))
             push!(togen, next_false)
             if next_true in generated
                 @assert next_true.label isa Symbol
@@ -143,19 +143,19 @@ function generate_code(entry::CodePoint, value, location::LineNumberNode, state:
         elseif action isa Expr
             push!(emit, action)
         else
-            error("this code point ($(typeof(action))) is believed unreachable")
+            error("this node point ($(typeof(action))) is believed unreachable")
         end
     end
 
     push!(emit, :(@label $result_label))
     push!(emit, result_variable)
-    Expr(:block, state.assertions..., emit...)
+    Expr(:block, binder.assertions..., emit...)
 end
 
 #
-# Build the whole state machine from the syntax for the value and body
+# Build the whole decision automaton from the syntax for the value and body
 #
-function build_state_machine(location::LineNumberNode, mod::Module, value, body)
+function build_decision_automaton(location::LineNumberNode, mod::Module, value, body)
     if body isa Expr && body.head == :call && body.args[1] == :(=>)
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
@@ -168,45 +168,46 @@ function build_state_machine(location::LineNumberNode, mod::Module, value, body)
         error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$body`.")
     end
 
-    state = BinderState(mod)
-    entry = build_state_machine_core(value, source_cases, location, state)
-    return (entry, state)
+    binder = BinderContext(mod)
+    entry = build_decision_automaton_core(value, source_cases, location, binder)
+    return (entry, binder)
 end
 
 #
-# Compute and record the next action for the given state.
+# Compute and record the next action for the given binder.
 #
-function set_next!(code::CodePoint, state::BinderState)
-    @assert code.action === nothing
-    @assert code.next === nothing
+function set_next!(node::AutomatonNode, binder::BinderContext)
+    @assert node.action === nothing
+    @assert node.next === nothing
 
-    action::Union{CasePartialResult, BoundPattern, Expr} = next_action(code, state)
-    next::Union{Tuple{}, Tuple{CodePoint}, Tuple{CodePoint, CodePoint}} =
-        make_next(code, action, state)
-    code.action = action
-    code.next = next
-    @assert !(code.next isa Nothing)
+    action::Union{CasePartialResult, BoundPattern, Expr} = next_action(node, binder)
+    next::Union{Tuple{}, Tuple{AutomatonNode}, Tuple{AutomatonNode, AutomatonNode}} =
+        make_next(node, action, binder)
+    node.action = action
+    node.next = next
+    @assert !(node.next isa Nothing)
 end
 
 
 #
-# Compute the next action for the given decision automatin state.  We take the
+# Compute the next action for the given decision automaton node.  We take the
 # simple approach of just doing the next thing on the list of the first pattern
 # that might match (the left-to-right "heusristic").  We might use different
 # heuristics to do better, but not likely by more than a few percent except
 # in machine-generated code.
 # See https://www.cs.tufts.edu/~nr/cs257/archive/norman-ramsey/match.pdf for details.
 # See https://gist.github.com/gafter/145db4a2282296bdaa08e0a0dcce9217 for an example
-# of machine-generated code that can cause an explosion of code size.
+# of machine-generated pattern-matching code that can cause an explosion of generated
+# code size.
 #
 function next_action(
-    code::CodePoint,
-    state::BinderState)::Union{CasePartialResult, BoundPattern, Expr}
-    if isempty(code.cases)
+    node::AutomatonNode,
+    binder::BinderContext)::Union{CasePartialResult, BoundPattern, Expr}
+    if isempty(node.cases)
         # cases have been exhausted.  Return code to throw a match failure.
-        return :($throw($MatchFailure($(state.input_variable))))
+        return :($throw($MatchFailure($(binder.input_variable))))
     end
-    first_case = code.cases[1]
+    first_case = node.cases[1]
     if first_case.pattern isa BoundTruePattern
         # case has been satisfied.  Return it as our destination.
         return first_case
@@ -223,59 +224,59 @@ end
 
 #
 # Given an action, make the "next" result, which is the action or successor
-# state of the decision automaton.
+# node of the decision automaton.
 #
 function make_next(
-    code::CodePoint,
+    node::AutomatonNode,
     action::Union{CasePartialResult, Expr},
-    state::BinderState)
+    binder::BinderContext)
     return ()
 end
 function make_next(
-    code::CodePoint,
+    node::AutomatonNode,
     action::BoundPattern,
-    state::BinderState)
+    binder::BinderContext)
     error("pattern cannot be the next action: $(typeof(action))")
 end
-function intern(code::CodePoint, state::BinderState)
-    @assert code.label === nothing
-    newcode = get!(state.intern, code, code)
-    if newcode !== code
-        ensure_label!(newcode, state)
+function intern(node::AutomatonNode, binder::BinderContext)
+    @assert node.label === nothing
+    newcode = get!(binder.intern, node, node)
+    if newcode !== node
+        ensure_label!(newcode, binder)
     end
     newcode
 end
 function make_next(
-    code::CodePoint,
+    node::AutomatonNode,
     action::BoundFetchPattern,
-    state::BinderState)::Tuple{CodePoint}
-    succ = remove(action, code)
-    succ = intern(succ, state)
+    binder::BinderContext)::Tuple{AutomatonNode}
+    succ = remove(action, node)
+    succ = intern(succ, binder)
     return (succ,)
 end
 
-# When a test occurs, there are two subsequent states, depending on the outcome of the test.
+# When a test occurs, there are two subsequent nodes, depending on the outcome of the test.
 function make_next(
-    code::CodePoint,
+    node::AutomatonNode,
     action::BoundTestPattern,
-    state::BinderState)::Tuple{CodePoint, CodePoint}
-    true_next = remove(action, true, code)
-    false_next = remove(action, false, code)
-    true_next = intern(true_next, state)
-    false_next = intern(false_next, state)
+    binder::BinderContext)::Tuple{AutomatonNode, AutomatonNode}
+    true_next = remove(action, true, node)
+    false_next = remove(action, false, node)
+    true_next = intern(true_next, binder)
+    false_next = intern(false_next, binder)
     # we will fall through to the code for true if possible but jump to the code for false
-    ensure_label!(false_next, state)
+    ensure_label!(false_next, binder)
     return (true_next, false_next)
 end
 
-# The next code point is the same but without the action, since it has been done.
-function remove(action::BoundFetchPattern, code::CodePoint)::CodePoint
-    cases = map(c -> remove(action, c), code.cases)
-    return with_cases(code, cases)
+# The next node is the same but without the action, since it has been done.
+function remove(action::BoundFetchPattern, node::AutomatonNode)::AutomatonNode
+    cases = map(c -> remove(action, c), node.cases)
+    return with_cases(node, cases)
 end
-function remove(action::BoundTestPattern, sense::Bool, code::CodePoint)::CodePoint
-    cases = map(c -> remove(action, sense, c), code.cases)
-    return with_cases(code, cases)
+function remove(action::BoundTestPattern, sense::Bool, node::AutomatonNode)::AutomatonNode
+    cases = map(c -> remove(action, sense, c), node.cases)
+    return with_cases(node, cases)
 end
 
 function remove(action::BoundTestPattern, sense::Bool, case::CasePartialResult)::CasePartialResult
@@ -347,24 +348,24 @@ end
 #
 # Simplify a case by removing fetch operations whose results are not used.
 #
-function simplify(case::CasePartialResult, state::BinderState)::CasePartialResult
+function simplify(case::CasePartialResult, binder::BinderContext)::CasePartialResult
     required_temps = Set(values(case.assigned))
-    simplified_pattern = simplify(case.pattern, required_temps, state)
+    simplified_pattern = simplify(case.pattern, required_temps, binder)
     return with_pattern(case, simplified_pattern)
 end
 
 #
 # Simplify a pattern by removing fetch operations whose results are not used.
 #
-function simplify(pattern::BoundPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+function simplify(pattern::BoundPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     push!(required_temps, pattern.input)
     pattern
 end
-function simplify(pattern::Union{BoundTruePattern, BoundFalsePattern}, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+function simplify(pattern::Union{BoundTruePattern, BoundFalsePattern}, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     pattern
 end
-function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
-    temp = get_temp(state, pattern)
+function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
+    temp = get_temp(binder, pattern)
     if temp in required_temps
         pop!(required_temps, temp)
         push!(required_temps, pattern.input)
@@ -373,8 +374,8 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, state
         BoundTruePattern(pattern.location, pattern.source)
     end
 end
-function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
-    temp = get_temp(state, pattern)
+function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
+    temp = get_temp(binder, pattern)
     if temp in required_temps
         pop!(required_temps, temp)
         for (v, t) in pattern.assigned
@@ -385,26 +386,26 @@ function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symb
         BoundTruePattern(pattern.location, pattern.source)
     end
 end
-function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     push!(required_temps, pattern.input)
     for (v, t) in pattern.assigned
         push!(required_temps, t)
     end
     pattern
 end
-function simplify(pattern::BoundAndPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+function simplify(pattern::BoundAndPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     subpatterns = BoundPattern[]
     for p in reverse(pattern.subpatterns)
-        push!(subpatterns, simplify(p, required_temps, state))
+        push!(subpatterns, simplify(p, required_temps, binder))
     end
     BoundAndPattern(pattern.location, pattern.source, BoundPattern[reverse(subpatterns)...])
 end
-function simplify(pattern::BoundOrPattern, required_temps::Set{Symbol}, state::BinderState)::BoundPattern
+function simplify(pattern::BoundOrPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     subpatterns = BoundPattern[]
     new_required_temps = Set{Symbol}()
     for p in reverse(pattern.subpatterns)
         rt = copy(required_temps)
-        push!(subpatterns, simplify(p, rt, state))
+        push!(subpatterns, simplify(p, rt, binder))
         union!(new_required_temps, rt)
     end
     empty!(required_temps)
@@ -413,44 +414,44 @@ function simplify(pattern::BoundOrPattern, required_temps::Set{Symbol}, state::B
 end
 
 #
-# Some useful macros for testing and diagnosing the state machine.
+# Some useful macros for testing and diagnosing the decision automaton.
 #
 
-# Return the count of the number of states that would be generated by the match,
+# Return the count of the number of nodes that would be generated by the match,
 # but otherwise does not generate any code for the match.
 macro match2_count_states(value, body)
-    (entry, state) = build_state_machine(__source__, __module__, value, body)
+    (entry, binder) = build_decision_automaton(__source__, __module__, value, body)
     length(reachable_states(entry))
 end
 
-# Print the state maching (one line per state) to a given io channel
+# Print the decision automaton (one line per node) to a given io channel
 macro match2_dump(io, value, body)
     handle_match2_dump(__source__, __module__, io, value, body, false)
 end
-# Print the state maching (one line per state) to stdout
+# Print the binder maching (one line per binder) to stdout
 macro match2_dump(value, body)
     handle_match2_dump(__source__, __module__, stdout, value, body, false)
 end
-# Print the state maching (verbose) to a given io channel
+# Print the binder maching (verbose) to a given io channel
 macro match2_dumpall(io, value, body)
     handle_match2_dump(__source__, __module__, io, value, body, true)
 end
-# Print the state maching (verbose) to stdout
+# Print the binder maching (verbose) to stdout
 macro match2_dumpall(value, body)
     handle_match2_dump(__source__, __module__, stdout, value, body, true)
 end
 
 function handle_match2_dump(__source__, __module__, io, value, body, long::Bool)
-    (entry, state) = build_state_machine(__source__, __module__, value, body)
-    esc(:($dumpall($io, $entry, $state, $long)))
+    (entry, binder) = build_decision_automaton(__source__, __module__, value, body)
+    esc(:($dumpall($io, $entry, $binder, $long)))
 end
 
 #
 # Implementation of `@match2 value begin ... end`
 #
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
-    (entry, state) = build_state_machine(location, mod, value, body)
-    result = generate_code(entry, value, location, state)
+    (entry, binder) = build_decision_automaton(location, mod, value, body)
+    result = generate_code(entry, value, location, binder)
     if body.head == :let
         result = Expr(:let, body.args[1], result)
     end

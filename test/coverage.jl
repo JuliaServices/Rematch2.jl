@@ -1,6 +1,6 @@
 #
-# Additional tests to improve code coverage.
-# These tests mainly exercise diagnostic code that isn't crucial to the
+# Additional tests to improve node coverage.
+# These tests mainly exercise diagnostic node that isn't crucial to the
 # normal operation of the package.
 #
 
@@ -15,7 +15,7 @@ end
 
 expected="""
 
-State Machine: (57 states) input «input_value»
+Decision Automaton: (57 nodes) input «input_value»
 State 1
   1: «input_value» == 1 => 1
   2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == «input_value.x») => 2
@@ -342,9 +342,9 @@ State 56
     MATCH 9 with value 9
 State 57
     FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
-end # of state machine
+end # of automaton
 """
-@testset "Additional tests to improve code coverage" begin
+@testset "Additional tests to improve node coverage" begin
     io = IOBuffer()
     Rematch2.@match2_dumpall io e begin
         1                            => 1

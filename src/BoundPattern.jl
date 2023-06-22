@@ -21,10 +21,7 @@ abstract type BoundFetchPattern <: BoundPattern end
 # Patterns which test some boolean condition.
 abstract type BoundTestPattern <: BoundPattern end
 
-# Functions for pretty-printing patterns and the state machine
-pretty(io::IO, x::Any) = print(io, x)
-
-# Functions for pretty-printing patterns and the state machine
+# Functions for pretty-printing patterns and the decision automaton
 pretty(io::IO, x::Any) = print(io, x)
 
 # A pattern that always matches
@@ -35,7 +32,6 @@ end
 Base.hash(::BoundTruePattern, h::UInt64) = hash(0x8cc17f34ef3bbb1d, h)
 Base.:(==)(a::BoundTruePattern, b::BoundTruePattern) = true
 pretty(io::IO, ::BoundTruePattern) = print(io, "true")
-pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 
 # A pattern that never matches
 struct BoundFalsePattern <: BoundPattern
@@ -44,7 +40,6 @@ struct BoundFalsePattern <: BoundPattern
 end
 Base.hash(::BoundFalsePattern, h::UInt64) = hash(0xeb817c7d6beb3bda, h)
 Base.:(==)(a::BoundFalsePattern, b::BoundFalsePattern) = true
-pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 
 function BoundBoolPattern(location::LineNumberNode, source::Any, b::Bool)
