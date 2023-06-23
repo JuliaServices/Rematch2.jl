@@ -23,12 +23,10 @@ macro match_case(pattern, value)
     return esc(:($pattern => $value))
 end
 
-
 @testset "Tests that add code coverage" begin
     file = Symbol(@__FILE__)
 
-    expected="""
-Decision Automaton: (57 nodes) input «input_value»
+    expected="""Decision Automaton: (57 nodes) input «input_value»
 State 1
   1: «input_value» == 1 => 1
   2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == «input_value.x») => 2
