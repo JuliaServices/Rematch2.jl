@@ -343,9 +343,9 @@ State 57
     FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
 end # of automaton
 """
-@testset "Additional tests to improve node coverage" begin
-    io = IOBuffer()
-    Rematch2.@match2_dumpall io e begin
+@testset "Tests for node coverage" begin
+    devnull = IOBuffer()
+    Rematch2.@match2_dumpall devnull e begin
         1                            => 1
         Foo(x, x)                    => 2
         y::D                         => 3
@@ -359,16 +359,11 @@ end # of automaton
         Foo(1, y) where f2(y)            => 2
         Foo(x, y) where (f1(x) && f2(y)) => 3
     end
-    actual = String(take!(io))
-
+    actual = String(take!(devnull))
     for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
         @test a == e
     end
-end
 
-@testset "test @match2_dumpall for code coverage" begin
-    # Since @match2_dumpall is only used for debugging, we don't need to test
-    # its actual output.  Just make sure it doesn't crash.
     devnull = IOBuffer()
     Rematch2.@match2_dumpall devnull some_value begin
         Foo(x, 2) where !f1(x)            => 1
@@ -382,10 +377,12 @@ end
         Foo(x, y) where !(f1(x) || f2(y)) => 3
         _                                 => 5
     end
-    @test true
+    devnull = nothing
 
     @test_throws ErrorException Rematch2.gentemp(:a)
 
     trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
+    binder = Rematch2.BinderContext(@__MODULE__)
     @test_throws ErrorException Rematch2.code(trash)
+    @test_throws ErrorException Rematch2.code(trash, binder)
 end

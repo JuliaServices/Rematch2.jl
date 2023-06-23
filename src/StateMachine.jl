@@ -294,7 +294,7 @@ end
 #
 # Deduplicate the decision automaton by collapsing behaviorally identical states.
 #
-function deduplicate_state_machine(entry::AutomatonNode, binder::BinderContext)
+function deduplicate_automaton(entry::AutomatonNode, binder::BinderContext)
     dedup_map = Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode}()
     result = Vector{DeduplicatedAutomatonNode}()
     top_down_nodes = reachable_states(entry)
