@@ -1,7 +1,7 @@
 # Note we do not use `@eval` to define types within a `@testset``
 # because we need the types to be defined during macro expansion,
 # which is earlier than evaluation.  types are looked up during
-# expansion of the `@match2`` macro so we can use the known bindings
+# expansion of the `@match2` macro so we can use the known bindings
 # of types to generate more efficient code.
 
 struct T207a
@@ -137,12 +137,12 @@ end
 end
 
 #
-# To print the state machines shown in comments below, replace @match2_count_states
-# with @match2_dump and run the test.  To show the full details of how the state
-# machine was computed, try @match2_dumpall.
+# To print the decision automaton shown in comments below, replace @match2_count_states
+# with @match2_dump and run the test.  To show the full details of how the decision
+# automaton was computed, try @match2_dumpall.
 #
 
-@testset "test for state machine optimizations 1" begin
+@testset "test for decision automaton optimizations 1" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
     # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_0»)
@@ -153,7 +153,7 @@ end
     end) == 5
 end
 
-@testset "test for state machine optimizations 2" begin
+@testset "test for decision automaton optimizations 2" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 6 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
     # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_1»)
@@ -167,7 +167,7 @@ end
     end) == 6
 end
 
-@testset "test for state machine optimizations 3" begin
+@testset "test for decision automaton optimizations 3" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
@@ -182,7 +182,7 @@ end
     end) == 7
 end
 
-@testset "test for state machine optimizations 4" begin
+@testset "test for decision automaton optimizations 4" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
