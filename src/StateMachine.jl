@@ -221,11 +221,6 @@ end
 # the decision automaton.  We define `hash` and `==` to take account of only what matters.
 # Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `CodePoint`.
 mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
-    # A label to produce in the code at entry to the code where
-    # this node is implemented, if one is needed.  This is not produced
-    # when this struct is created, but later during code generation.
-    label::Union{Nothing, Symbol}
-
     # The selected action to take from this node: either
     # - Case whose tests have all passed, or
     # - A bound pattern to perform and then move on to the next node, or
@@ -244,7 +239,7 @@ mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
     @_const _cached_hash::UInt64
     function DeduplicatedAutomatonNode(action, next)
         action isa CasePartialResult && @assert action.pattern isa BoundTruePattern
-        new(nothing, action, next, hash((action, next)))
+        new(action, next, hash((action, next)))
     end
 end
 Base.hash(node::DeduplicatedAutomatonNode, h::UInt64) = hash(node._cached_hash, h)
