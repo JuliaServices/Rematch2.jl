@@ -24,7 +24,7 @@ struct BinderContext
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
 
-    # Assertions that should be executed at runtime before the matching code.
+    # Assertions that should be executed at runtime before the automaton.
     assertions::Vector{Any}
 
     # A dictionary used to intern AutomatonNode values in Match2Cases.
@@ -516,7 +516,6 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
                 if !haskey(new_assigned, patvar)
                     new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
                 end
-                # Prevent the variable from being assigned to in user code
                 # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
             end

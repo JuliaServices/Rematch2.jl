@@ -25,7 +25,7 @@ end
 #
 # Build the decision automaton and return its entry point.
 #
-function build_decision_automaton_core(
+function build_automaton_core(
     value,
     source_cases::Vector{Any},
     location::LineNumberNode,
@@ -54,27 +54,12 @@ function build_decision_automaton_core(
         if node.action isa Nothing
             set_next!(node, binder)
             @assert node.action !== nothing
+            @assert node.next !== nothing
             if node.action isa CasePartialResult
                 push!(reachable, node.action.case_number)
             end
-            next = node.next
-            @assert next !== nothing
-            succ = successors(node)
-            for i in 1:length(succ)
-                push!(work_queue, succ[i])
-                # we will fall through to the true branch if possible and jump to
-                # the false branch.  So we need a label for the false side.
-                i != 1 && ensure_label!(succ[i], binder)
-            end
-        else
-            # We will need a label because it has
-            # two predecessors in the generated code, and one of them will
-            # have to jump to it rather than falling through
-            next = node.next
-            @assert next !== nothing
-            ensure_label!(node, binder)
+            union!(work_queue, successors(node))
         end
-        @assert node.action !== nothing
     end
 
     # Warn if there were any unreachable cases
@@ -92,21 +77,21 @@ end
 #
 # Generate all of the code given the entry point
 #
-function generate_code(entry::AutomatonNode, value, location::LineNumberNode, binder::BinderContext)
+function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, value, location::LineNumberNode, binder::BinderContext)
     result_variable = gensym("match_result")
     result_label = gensym("completed")
     emit = Any[location, :($(binder.input_variable) = $value)]
-    togen = AutomatonNode[entry]
-    generated = Set{AutomatonNode}()
+
+    # put the first node last so it will be the first to be emitted
+    reverse!(top_down_nodes)
+    togen = top_down_nodes # but now it's in the right order to consume from the end
 
     while !isempty(togen)
-        pc = pop!(togen)
-        pc in generated && continue
-        push!(generated, pc)
-        if pc.label isa Symbol
-            push!(emit, :(@label $(pc.label)))
+        node = pop!(togen)
+        if node.label isa Symbol
+            push!(emit, :(@label $(node.label)))
         end
-        action = pc.action
+        action = node.action
         if action isa CasePartialResult
             # We've matched a pattern.
             push!(emit, action.location)
@@ -115,35 +100,26 @@ function generate_code(entry::AutomatonNode, value, location::LineNumberNode, bi
         elseif action isa BoundFetchPattern
             push!(emit, action.location)
             push!(emit, code(action, binder))
-            (next::AutomatonNode,) = pc.next
-            if next in generated
-                @assert next.label isa Symbol
+            (next::DeduplicatedAutomatonNode,) = node.next
+            if last(togen) != next
+                # we need a `goto`, since it isn't the next thing we can fall into
+                ensure_label!(next, binder)
                 push!(emit, :(@goto $(next.label)))
-            else
-                # we don't need a `goto` for the next node here:
-                # it hasn't been generated yet, and we're pushing
-                # it on the stack to be generated next.  We'll just
-                # fall through to its code.
-                push!(togen, next)
             end
         elseif action isa BoundTestPattern
             push!(emit, action.location)
-            next_true, next_false = pc.next
+            next_true, next_false = node.next
             @assert next_false.label isa Symbol
             push!(emit, :($(code(action, binder)) || @goto $(next_false.label)))
-            push!(togen, next_false)
-            if next_true in generated
-                @assert next_true.label isa Symbol
+            if last(togen) != next_true
+                # we need a `goto`, since it isn't the next thing we can fall into
+                ensure_label!(next_true, binder)
                 push!(emit, :(@goto $(next_true.label)))
-            else
-                # Push it on the stack of code to generate next, so
-                # we can just fall into it instead of producing a `goto`.
-                push!(togen, next_true)
             end
         elseif action isa Expr
             push!(emit, action)
         else
-            error("this node point ($(typeof(action))) is believed unreachable")
+            error("this node ($(typeof(action))) is believed unreachable")
         end
     end
 
@@ -155,7 +131,7 @@ end
 #
 # Build the whole decision automaton from the syntax for the value and body
 #
-function build_decision_automaton(location::LineNumberNode, mod::Module, value, body)
+function build_automaton(location::LineNumberNode, mod::Module, value, body)
     if body isa Expr && body.head == :call && body.args[1] == :(=>)
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
@@ -169,12 +145,22 @@ function build_decision_automaton(location::LineNumberNode, mod::Module, value, 
     end
 
     binder = BinderContext(mod)
-    entry = build_decision_automaton_core(value, source_cases, location, binder)
+    entry = build_automaton_core(value, source_cases, location, binder)
     return (entry, binder)
 end
 
 #
-# Compute and record the next action for the given binder.
+# Build the whole decision automaton from the syntax for the value and body,
+# optimize it, and return the resulting set of states along with the binder.
+#
+function build_deduplicated_automaton(location::LineNumberNode, mod::Module, value, body)
+    entry, binder = build_automaton(location::LineNumberNode, mod::Module, value, body)
+    top_down_nodes = deduplicate_automaton(entry, binder)
+    return (top_down_nodes, binder)
+end
+
+#
+# Compute and record the next action for the given node.
 #
 function set_next!(node::AutomatonNode, binder::BinderContext)
     @assert node.action === nothing
@@ -239,12 +225,7 @@ function make_next(
     error("pattern cannot be the next action: $(typeof(action))")
 end
 function intern(node::AutomatonNode, binder::BinderContext)
-    @assert node.label === nothing
-    newcode = get!(binder.intern, node, node)
-    if newcode !== node
-        ensure_label!(newcode, binder)
-    end
-    newcode
+    get!(binder.intern, node, node)
 end
 function make_next(
     node::AutomatonNode,
@@ -264,8 +245,6 @@ function make_next(
     false_next = remove(action, false, node)
     true_next = intern(true_next, binder)
     false_next = intern(false_next, binder)
-    # we will fall through to the code for true if possible but jump to the code for false
-    ensure_label!(false_next, binder)
     return (true_next, false_next)
 end
 
@@ -420,38 +399,50 @@ end
 # Return the count of the number of nodes that would be generated by the match,
 # but otherwise does not generate any code for the match.
 macro match2_count_states(value, body)
-    (entry, binder) = build_decision_automaton(__source__, __module__, value, body)
-    length(reachable_states(entry))
+    top_down_nodes, binder = build_deduplicated_automaton(__source__, __module__, value, body)
+    length(top_down_nodes)
 end
 
-# Print the decision automaton (one line per node) to a given io channel
+# Print the automaton (one line per node) to a given io channel
 macro match2_dump(io, value, body)
-    handle_match2_dump(__source__, __module__, io, value, body, false)
+    handle_match2_dump(__source__, __module__, io, value, body)
 end
-# Print the binder maching (one line per binder) to stdout
+# Print the automaton (one line per node) to stdout
 macro match2_dump(value, body)
-    handle_match2_dump(__source__, __module__, stdout, value, body, false)
+    handle_match2_dump(__source__, __module__, stdout, value, body)
 end
-# Print the binder maching (verbose) to a given io channel
+# Print the automaton (verbose) to a given io channel
 macro match2_dumpall(io, value, body)
-    handle_match2_dump(__source__, __module__, io, value, body, true)
+    handle_match2_dump_verbose(__source__, __module__, io, value, body)
 end
-# Print the binder maching (verbose) to stdout
+# Print the automaton (verbose) to stdout
 macro match2_dumpall(value, body)
-    handle_match2_dump(__source__, __module__, stdout, value, body, true)
+    handle_match2_dump_verbose(__source__, __module__, stdout, value, body)
 end
 
-function handle_match2_dump(__source__, __module__, io, value, body, long::Bool)
-    (entry, binder) = build_decision_automaton(__source__, __module__, value, body)
-    esc(:($dumpall($io, $entry, $binder, $long)))
+function handle_match2_dump(__source__, __module__, io, value, body)
+    top_down_nodes, binder = build_deduplicated_automaton(__source__, __module__, value, body)
+    esc(:($dumpall($io, $top_down_nodes, $binder, false)))
+end
+
+function handle_match2_dump_verbose(__source__, __module__, io, value, body)
+    entry, binder = build_automaton(__source__, __module__, value, body)
+    top_down_nodes = reachable_states(entry)
+
+    esc(quote
+        # print the dump of the decision automaton before deduplication
+        $dumpall($io, $top_down_nodes, $binder, true)
+        # but return the count of deduplicated states.
+        $length($deduplicate_automaton($entry, $binder))
+    end)
 end
 
 #
 # Implementation of `@match2 value begin ... end`
 #
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
-    (entry, binder) = build_decision_automaton(location, mod, value, body)
-    result = generate_code(entry, value, location, binder)
+    top_down_nodes, binder = build_deduplicated_automaton(location, mod, value, body)
+    result = generate_code(top_down_nodes, value, location, binder)
     if body.head == :let
         result = Expr(:let, body.args[1], result)
     end

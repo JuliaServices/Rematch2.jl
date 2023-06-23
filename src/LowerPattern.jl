@@ -23,7 +23,7 @@ function code(bound_pattern::BoundWhereTestPattern, binder::BinderContext)
 end
 function code(bound_pattern::BoundTypeTestPattern, binder::BinderContext)
     # We assert that the type is invariant.  Because this mutates binder.assertions,
-    # you must take the value of binder.assertions after all calls to code.
+    # you must take the value of binder.assertions after all calls to the generated code.
     if bound_pattern.source != bound_pattern.type && !(bound_pattern.source in binder.asserted_types)
         test = :($(bound_pattern.type) == $(bound_pattern.source))
         thrown = :($throw($AssertionError($string($(string(bound_pattern.location.file)),

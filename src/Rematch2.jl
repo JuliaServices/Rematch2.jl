@@ -3,10 +3,20 @@ module Rematch2
 export @match, @match2, MatchFailure, @match_return, @match_fail
 
 using MacroTools: MacroTools, @capture
+using Base.Iterators: reverse
 using Base: ImmutableDict
 
 struct MatchFailure <: Exception
     value
+end
+
+# const fields only suppored >= Julia 1.8
+macro _const(x)
+    if VERSION >= v"1.8"
+        Expr(:const, esc(x))
+    else
+        esc(x)
+    end
 end
 
 include("TopologicalSort.jl")

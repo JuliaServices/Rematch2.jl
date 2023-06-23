@@ -75,29 +75,17 @@ function pretty(io::IO, case::CasePartialResult, binder::BinderContext)
     println(io)
 end
 
-
-# const fields only suppored >= Julia 1.8
-macro _const(x)
-    if VERSION >= v"1.8"
-        Expr(:const, esc(x))
-    else
-        esc(x)
-    end
-end
+abstract type AbstractAutomatonNode end
 
 #
 # A node of the decision automaton (i.e. a point in the generated code),
 # which is represented a set of partially matched cases.
 #
-mutable struct AutomatonNode
+mutable struct AutomatonNode <: AbstractAutomatonNode
     # The status of the cases.  Impossible cases, which are designated by a
     # `false` `bound_pattern`, are removed from this array.  Cases are always
     # ordered by `case_number`.
     @_const cases::ImmutableVector{CasePartialResult}
-
-    # A label to emit at entry to the code where
-    # this node is implemented, if one is needed.
-    label::Union{Nothing, Symbol}
 
     # The selected action to take from this node: either
     # - Nothing, before it has been computed, or
@@ -117,13 +105,12 @@ mutable struct AutomatonNode
     next::Union{Nothing, Tuple{}, Tuple{AutomatonNode}, Tuple{AutomatonNode, AutomatonNode}}
 
     @_const _cached_hash::UInt64
-end
-function AutomatonNode(cases::Vector{CasePartialResult})
-    AutomatonNode(ImmutableVector(cases), nothing, nothing, nothing,
-        hash(cases, 0xc98a9a23c2d4d915))
+
+    function AutomatonNode(cases::Vector{CasePartialResult})
+        new(ImmutableVector(cases), nothing, nothing, hash(cases, 0xc98a9a23c2d4d915))
+    end
 end
 Base.hash(case::AutomatonNode, h::UInt64) = hash(case._cached_hash, h)
-Base.hash(case::AutomatonNode) = case._cached_hash
 function Base.:(==)(a::AutomatonNode, b::AutomatonNode)
     a === b ||
         a._cached_hash == b._cached_hash &&
@@ -139,30 +126,23 @@ function with_cases(node::AutomatonNode, cases::Vector{CasePartialResult})
     end
     AutomatonNode(cases)
 end
-function ensure_label!(node::AutomatonNode, binder::BinderContext)
-    if node.label isa Nothing
-        node.label = gensym("label", binder)
-    end
+function name(node::T, id::IdDict{T, Int}) where { T <: AbstractAutomatonNode }
+    "State $(id[node])"
 end
-function name(code::AutomatonNode, id::IdDict{AutomatonNode, Int})
-    "State $(id[code])"
-end
-function successors(c::AutomatonNode)::Vector{AutomatonNode}
+function successors(c::T)::Vector{T} where { T <: AbstractAutomatonNode }
     @assert !(c.next isa Nothing)
     collect(c.next)
 end
-function reachable_states(root::AutomatonNode)::Vector{AutomatonNode}
+function reachable_states(root::T)::Vector{T} where { T <: AbstractAutomatonNode }
     topological_sort(successors, [root])
 end
 
 #
 # Support for pretty-printing
 #
-function dumpall(io::IO, root::AutomatonNode, binder::BinderContext, long::Bool)
-    all::Vector{AutomatonNode} = reachable_states(root)
-    # Make a map from each AutomatonNode to its index
-    id = IdDict{AutomatonNode, Int}(map(((i,s),) -> s => i, enumerate(all))...)
-    long && println(io)
+function dumpall(io::IO, all::Vector{T}, binder::BinderContext, long::Bool) where { T <: AbstractAutomatonNode }
+    # Make a map from each CodePoint to its index
+    id = IdDict{T, Int}(map(((i,s),) -> s => i, enumerate(all))...)
     print(io, "Decision Automaton: ($(length(all)) nodes) input ")
     pretty(io, binder.input_variable)
     println(io)
@@ -171,18 +151,18 @@ function dumpall(io::IO, root::AutomatonNode, binder::BinderContext, long::Bool)
         println(io)
     end
     println(io, "end # of automaton")
-    long && println(io)
     length(all)
 end
 
+# Pretty-print either a CodePoint or a DeduplicatedAutomatonNode
 function pretty(
     io::IO,
-    node::AutomatonNode,
+    node::T,
     binder::BinderContext,
-    id::IdDict{AutomatonNode, Int},
-    long::Bool = true)
+    id::IdDict{T, Int},
+    long::Bool = true) where { T <: AbstractAutomatonNode }
     print(io, name(node, id))
-    if long
+    if long && hasfield(T, :cases)
         println(io)
         for case in node.cases
             print(io, "  ")
@@ -210,7 +190,7 @@ function pretty(
         error(" UNKNOWN ")
     end
     next = node.next
-    if next isa Tuple{AutomatonNode}
+    if next isa Tuple{T}
         fall_through = id[next[1]] == id[node] + 1
         if long || !fall_through
             long && print(io, "\n   ")
@@ -219,7 +199,7 @@ function pretty(
                 print(io, " (fall through)")
             end
         end
-    elseif next isa Tuple{AutomatonNode, AutomatonNode}
+    elseif next isa Tuple{T, T}
         fall_through = id[next[1]] == id[node] + 1
         if long || !fall_through
             long && print(io, "\n   ")
@@ -231,5 +211,100 @@ function pretty(
         end
         long && print(io, "   ")
         print(io, " ELSE: $(name(next[2], id))")
+    elseif next isa Tuple{}
+    else
+        error(" UNKNOWN ")
     end
+end
+
+# We merge nodes with identical behavior, bottom-up, to minimize the size of
+# the decision automaton.  We define `hash` and `==` to take account of only what matters.
+# Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `CodePoint`.
+mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
+    # A label to produce in the code at entry to the code where
+    # this node is implemented, if one is needed.  This is not produced
+    # when this struct is created, but later during code generation.
+    label::Union{Nothing, Symbol}
+
+    # The selected action to take from this node: either
+    # - Case whose tests have all passed, or
+    # - A bound pattern to perform and then move on to the next node, or
+    # - An Expr to insert into the code when all else is exhausted
+    #   (which throws MatchFailure)
+    @_const action::Union{CasePartialResult, BoundPattern, Expr}
+
+    # The next code point(s):
+    # - Tuple{} if the action is a case which was matched or a MatchFailure
+    # - Tuple{DeduplicatedAutomatonNode} if the action was a fetch pattern. It designates
+    #   the code to perform after the fetch.
+    # - Tuple{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode} if the action is a test.  These are the states
+    #   to go to if the result of the test is true ([1]) or false ([2]).
+    @_const next::Union{Tuple{}, Tuple{DeduplicatedAutomatonNode}, Tuple{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode}}
+
+    @_const _cached_hash::UInt64
+    function DeduplicatedAutomatonNode(action, next)
+        action isa CasePartialResult && @assert action.pattern isa BoundTruePattern
+        new(nothing, action, next, hash((action, next)))
+    end
+end
+Base.hash(node::DeduplicatedAutomatonNode, h::UInt64) = hash(node._cached_hash, h)
+Base.hash(node::DeduplicatedAutomatonNode) = node._cached_hash
+function Base.:(==)(a::DeduplicatedAutomatonNode, b::DeduplicatedAutomatonNode)
+    a === b ||
+        a._cached_hash == b._cached_hash &&
+        isequal(a.action, b.action) &&
+        isequal(a.next, b.next)
+end
+function ensure_label!(node::DeduplicatedAutomatonNode, binder::BinderContext)
+    if node.label isa Nothing
+        node.label = gensym("label", binder)
+    end
+end
+
+#
+# Deduplicate a code point, given the deduplications of the downstream code points.
+#
+function dedup(
+    dict::Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode},
+    node::AutomatonNode,
+    binder::BinderContext)
+    next = if node.next isa Tuple{}
+        node.next
+    elseif node.next isa Tuple{AutomatonNode}
+        (dedup(dict, node.next[1], binder),)
+    elseif node.next isa Tuple{AutomatonNode, AutomatonNode}
+        t = dedup(dict, node.next[1], binder)
+        f = dedup(dict, node.next[2], binder)
+        # we might fall through to the true label, but we always jump to the false label
+        ensure_label!(f, binder)
+        (t, f)
+    else
+        error("Unknown next type: $(node.next)")
+    end
+    key = DeduplicatedAutomatonNode(node.action, next)
+    result = get!(dict, key, key)
+    if result !== key
+        # The node already existed, so it must have had two predecessors
+        # We will need a label for one of them to use in the generated code
+        ensure_label!(result, binder)
+    end
+    result
+end
+
+#
+# Deduplicate the decision automaton by collapsing behaviorally identical states.
+#
+function deduplicate_automaton(entry::AutomatonNode, binder::BinderContext)
+    dedup_map = Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode}()
+    result = Vector{DeduplicatedAutomatonNode}()
+    top_down_nodes = reachable_states(entry)
+    for e in Iterators.reverse(top_down_nodes)
+        d = dedup(dedup_map, e, binder)
+        if d.label === nothing
+            # It is a newly seen node
+            push!(result, d)
+        end
+    end
+    new_entry = dedup(dedup_map, entry, binder)
+    return reachable_states(new_entry)
 end
