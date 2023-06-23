@@ -258,18 +258,19 @@ end
 
 #
 # Deduplicate a code point, given the deduplications of the downstream code points.
+# Has the side-effect of adding a mapping to the dict.
 #
-function dedup(
+function dedup!(
     dict::Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode},
     node::AutomatonNode,
     binder::BinderContext)
     next = if node.next isa Tuple{}
         node.next
     elseif node.next isa Tuple{AutomatonNode}
-        (dedup(dict, node.next[1], binder),)
+        (dedup!(dict, node.next[1], binder),)
     elseif node.next isa Tuple{AutomatonNode, AutomatonNode}
-        t = dedup(dict, node.next[1], binder)
-        f = dedup(dict, node.next[2], binder)
+        t = dedup!(dict, node.next[1], binder)
+        f = dedup!(dict, node.next[2], binder)
         (t, f)
     else
         error("Unknown next type: $(node.next)")
@@ -287,8 +288,8 @@ function deduplicate_automaton(entry::AutomatonNode, binder::BinderContext)
     result = Vector{DeduplicatedAutomatonNode}()
     top_down_nodes = reachable_states(entry)
     for e in Iterators.reverse(top_down_nodes)
-        dedup(dedup_map, e, binder)
+        _ = dedup!(dedup_map, e, binder)
     end
-    new_entry = dedup(dedup_map, entry, binder)
+    new_entry = dedup!(dedup_map, entry, binder)
     return reachable_states(new_entry)
 end

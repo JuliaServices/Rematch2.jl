@@ -88,16 +88,16 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospe
 
     # Because we are producing code in a top-down topologically-sorted order,
     # all of the `@goto`s that we emit are forward.  So we are guaranteed to emit
-    # the `@goto` before we hit the node where we need the `@label`.
+    # the `@goto` (and calling `label!`) before we hit the node where we need the `@label`.
     labels = IdDict{DeduplicatedAutomatonNode, Symbol}()
-    function label(code::DeduplicatedAutomatonNode)
+    function label!(code::DeduplicatedAutomatonNode)
         get!(() -> gensym("label", binder), labels, code)
     end
 
     while !isempty(togen)
         node = pop!(togen)
         if node in keys(labels)
-            push!(emit, :(@label $(label(node))))
+            push!(emit, :(@label $(labels[node])))
         end
         action = node.action
         if action isa CasePartialResult
@@ -113,15 +113,15 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospe
                 # We need a `goto`, since it isn't the next thing we can fall into.
                 # This call to `label` sets up the label in the `labels` map to be
                 # produced when we emit the target node.
-                push!(emit, :(@goto $(label(next))))
+                push!(emit, :(@goto $(label!(next))))
             end
         elseif action isa BoundTestPattern
             push!(emit, action.location)
             next_true, next_false = node.next
-            push!(emit, :($(code(action, binder)) || @goto $(label(next_false))))
+            push!(emit, :($(code(action, binder)) || @goto $(label!(next_false))))
             if last(togen) != next_true
-                # we need a `goto`, since it isn't the next thing we can fall into
-                push!(emit, :(@goto $(label(next_true))))
+                # we need a `goto`, since it isn't the next thing we can fall into.
+                push!(emit, :(@goto $(label!(next_true))))
             end
         elseif action isa Expr
             push!(emit, action)
