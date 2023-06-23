@@ -1,6 +1,6 @@
 #
 # Additional tests to improve node coverage.
-# These tests mainly exercise diagnostic node that isn't crucial to the
+# These tests mainly exercise diagnostic code that isn't crucial to the
 # normal operation of the package.
 #
 
@@ -13,7 +13,16 @@ struct Trash <: Rematch2.BoundFetchPattern
     location::LineNumberNode
 end
 
+struct MyPair
+    x
+    y
+end
+Rematch2.fieldnames(::Type{MyPair}) = error("May not @match MyPair")
+
+
 @testset "Tests that add code coverage" begin
+    file = Symbol(@__FILE__)
+
     expected="""
 Decision Automaton: (57 nodes) input «input_value»
 State 1
@@ -386,4 +395,20 @@ end # of automaton
     binder = Rematch2.BinderContext(@__MODULE__)
     @test_throws ErrorException Rematch2.code(trash)
     @test_throws ErrorException Rematch2.code(trash, binder)
+
+    let line = 0
+        try
+            line = (@__LINE__) + 2
+            @eval @match2 MyPair(1, 2) begin
+                MyPair(1, 2) => 3
+            end
+            @test false
+        catch ex
+            @test ex isa LoadError
+            e = ex.error
+            @test e isa ErrorException
+            @test e.msg == "$file:$line: Could not determine the field names of `$MyPair`."
+        end
+    end
+
 end
