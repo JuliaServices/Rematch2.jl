@@ -446,10 +446,6 @@ function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, locati
         error("$(location.file):$(location.line): Could not determine the field names of `$type`.")
     end
 
-    if members === nothing
-        error("$(location.file):$(location.line): The type `$type` has and empty list of fields???")
-    end
-
     match_positionally || return members
     if len != length(members)
         error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern expects $len fields.")

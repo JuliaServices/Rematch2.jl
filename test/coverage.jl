@@ -19,6 +19,10 @@ struct MyPair
 end
 Rematch2.fieldnames(::Type{MyPair}) = error("May not @match MyPair")
 
+macro match_case(pattern, value)
+    return esc(:($pattern => $value))
+end
+
 
 @testset "Tests that add code coverage" begin
     file = Symbol(@__FILE__)
@@ -354,61 +358,77 @@ State 57
 end # of automaton
 """
 
-    devnull = IOBuffer()
-    Rematch2.@match2_dumpall devnull e begin
-        1                            => 1
-        Foo(x, x)                    => 2
-        y::D                         => 3
-        [x, y..., z]                 => y
-        (x, y..., z) where e.q1      => z
-        6 || 7                       => 6
-        (x::A) where e.q2            => 7
-        (x::B) where e.q3            => 8
-        (x::C) where e.q4            => 9
-        Foo(x, 2) where f1(x)            => 1
-        Foo(1, y) where f2(y)            => 2
-        Foo(x, y) where (f1(x) && f2(y)) => 3
-    end
-    actual = String(take!(devnull))
-    for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
-        @test a == e
-    end
-
-    devnull = IOBuffer()
-    Rematch2.@match2_dumpall devnull some_value begin
-        Foo(x, 2) where !f1(x)            => 1
-        Foo(1, y) where !f2(y)            => 2
-        Foo(x, y) where !(f1(x) || f2(y)) => 3
-        _                                 => 5
-    end
-    Rematch2.@match2_dump devnull some_value begin
-        Foo(x, 2) where !f1(x)            => 1
-        Foo(1, y) where !f2(y)            => 2
-        Foo(x, y) where !(f1(x) || f2(y)) => 3
-        _                                 => 5
-    end
-    devnull = nothing
-
-    @test_throws ErrorException Rematch2.gentemp(:a)
-
-    trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
-    binder = Rematch2.BinderContext(@__MODULE__)
-    @test_throws ErrorException Rematch2.code(trash)
-    @test_throws ErrorException Rematch2.code(trash, binder)
-
-    let line = 0
-        try
-            line = (@__LINE__) + 2
-            @eval @match2 MyPair(1, 2) begin
-                MyPair(1, 2) => 3
-            end
-            @test false
-        catch ex
-            @test ex isa LoadError
-            e = ex.error
-            @test e isa ErrorException
-            @test e.msg == "$file:$line: Could not determine the field names of `$MyPair`."
+    @testset "exercise dumpall 1" begin
+        devnull = IOBuffer()
+        Rematch2.@match2_dumpall devnull e begin
+            1                            => 1
+            Foo(x, x)                    => 2
+            y::D                         => 3
+            [x, y..., z]                 => y
+            (x, y..., z) where e.q1      => z
+            6 || 7                       => 6
+            (x::A) where e.q2            => 7
+            (x::B) where e.q3            => 8
+            (x::C) where e.q4            => 9
+            Foo(x, 2) where f1(x)            => 1
+            Foo(1, y) where f2(y)            => 2
+            Foo(x, y) where (f1(x) && f2(y)) => 3
+        end
+        actual = String(take!(devnull))
+        for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
+            @test a == e
         end
     end
 
-end
+    @testset "exercise dumpall 2" begin
+        devnull = IOBuffer()
+        Rematch2.@match2_dumpall devnull some_value begin
+            Foo(x, 2) where !f1(x)            => 1
+            Foo(1, y) where !f2(y)            => 2
+            Foo(x, y) where !(f1(x) || f2(y)) => 3
+            _                                 => 5
+        end
+        Rematch2.@match2_dump devnull some_value begin
+            Foo(x, 2) where !f1(x)            => 1
+            Foo(1, y) where !f2(y)            => 2
+            Foo(x, y) where !(f1(x) || f2(y)) => 3
+            _                                 => 5
+        end
+    end
+
+    @testset "trigger some normally unreachable code" begin
+        @test_throws ErrorException Rematch2.gentemp(:a)
+
+        trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
+        binder = Rematch2.BinderContext(@__MODULE__)
+        @test_throws ErrorException Rematch2.code(trash)
+        @test_throws ErrorException Rematch2.code(trash, binder)
+    end
+
+    @testset "Rematch2.fieldnames(...) throwing" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 MyPair(1, 2) begin
+                    MyPair(1, 2) => 3
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Could not determine the field names of `$MyPair`."
+            end
+        end
+    end
+
+    @testset "A macro that expands to a match case" begin
+        # macro match_case(pattern, value)
+        #     return esc(:(x => value))
+        # end
+        @test (@match2 :x begin
+            @match_case pattern 1
+        end) == 1
+    end
+
+end # @testset "Tests that add code coverage"
