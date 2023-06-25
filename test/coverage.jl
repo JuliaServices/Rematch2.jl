@@ -13,6 +13,8 @@ struct Trash <: Rematch2.BoundFetchPattern
     location::LineNumberNode
 end
 
+const T = 12
+
 expected="""
 Decision Automaton: (57 nodes) input «input_value»
 Node 1
@@ -343,7 +345,7 @@ Node 57
     FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
 end # of automaton
 """
-@testset "Tests for node coverage" begin
+@testset "Tests for more coverage" begin
     devnull = IOBuffer()
     Rematch2.@match2_dumpall devnull e begin
         1                            => 1
@@ -385,4 +387,13 @@ end # of automaton
     binder = Rematch2.BinderContext(@__MODULE__)
     @test_throws ErrorException Rematch2.code(trash)
     @test_throws ErrorException Rematch2.code(trash, binder)
+
+    function f300(x::T) where { T }
+        # The implementation of @match can't bind `T` below - it finds the non-type `T`
+        # at module level - so it ignores it.
+        return @match2 x::T begin
+            _ => 1
+        end
+    end
+    @test f300(1) == 1
 end

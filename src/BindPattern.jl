@@ -301,9 +301,7 @@ function bind_pattern!(
                     break
                 end
             end
-            if field_type === nothing
-                error("$(location.file):$(location.line): Cannot find type type of `$bound_type` field `$field_name`.")
-            end
+            @assert field_type !== nothing
 
             fetch = BoundFetchFieldPattern(location, pattern_source, input, field_name, field_type)
             field_temp = push_pattern!(patterns, binder, fetch)

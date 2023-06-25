@@ -55,6 +55,7 @@ function build_automaton_core(
         try
             input_type = bind_type(location, type, binder.input_variable, binder)
         catch
+            # If we don't understand the type annotation, then we'll just ignore it.
         end
         binder.types[binder.input_variable] = input_type
         filter = BoundTypeTestPattern(location, type, binder.input_variable, input_type)
