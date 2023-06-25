@@ -1,7 +1,7 @@
 # Note we do not use `@eval` to define types within a `@testset``
 # because we need the types to be defined during macro expansion,
 # which is earlier than evaluation.  types are looked up during
-# expansion of the `@match2`` macro so we can use the known bindings
+# expansion of the `@match2` macro so we can use the known bindings
 # of types to generate more efficient code.
 
 struct T207a
@@ -137,12 +137,12 @@ end
 end
 
 #
-# To print the state machines shown in comments below, replace @match2_count_states
-# with @match2_dump and run the test.  To show the full details of how the state
-# machine was computed, try @match2_dumpall.
+# To print the decision automaton shown in comments below, replace @match2_count_states
+# with @match2_dump and run the test.  To show the full details of how the decision
+# automaton was computed, try @match2_dumpall.
 #
 
-@testset "test for state machine optimizations 1" begin
+@testset "test for decision automaton optimizations 1" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
     # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_0»)
@@ -153,7 +153,7 @@ end
     end) == 5
 end
 
-@testset "test for state machine optimizations 2" begin
+@testset "test for decision automaton optimizations 2" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 6 («label_0»)
     # State 2 FETCH «input_value.y» := «input_value».y
     # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_1»)
@@ -167,7 +167,7 @@ end
     end) == 6
 end
 
-@testset "test for state machine optimizations 3" begin
+@testset "test for decision automaton optimizations 3" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
@@ -182,7 +182,7 @@ end
     end) == 7
 end
 
-@testset "test for state machine optimizations 4" begin
+@testset "test for decision automaton optimizations 4" begin
     # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
@@ -198,61 +198,57 @@ end
 end
 
 @testset "test for sharing where clause conjuncts" begin
-    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: State 18 («label_2»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
-    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
-    # State 6 TEST «where_0» ELSE: State 8 («label_5»)
+    # State 4 TEST «input_value.y» == 2 ELSE: State 9 («label_5»)
+    # State 5 FETCH «where_0» := (f1)(«input_value.x»)
+    # State 6 TEST where «where_0» ELSE: State 8 («label_4»)
     # State 7 MATCH 1 with value 1
-    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
-    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 10 TEST «where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
-    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
-    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 13 TEST «where_1» ELSE: State 20 («label_2»)
-    # State 14 («label_6») MATCH 2 with value 2
-    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
-    # State 16 TEST «where_0» ELSE: State 20 («label_2»)
-    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 18 TEST «where_1» ELSE: State 20 («label_2»)
-    # State 19 MATCH 3 with value 3
-    # State 20 («label_2») MATCH 4 with value 4
+    # State 8 («label_4») TEST «input_value.x» == 1 THEN: State 10 ELSE: State 18 («label_2»)
+    # State 9 («label_5») TEST «input_value.x» == 1 ELSE: State 13 («label_3»)
+    # State 10 FETCH «where_1» := (f2)(«input_value.y»)
+    # State 11 TEST where «where_1» ELSE: State 18 («label_2»)
+    # State 12 MATCH 2 with value 2
+    # State 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
+    # State 14 TEST where «where_0» ELSE: State 18 («label_2»)
+    # State 15 FETCH «where_1» := (f2)(«input_value.y»)
+    # State 16 TEST where «where_1» ELSE: State 18 («label_2»)
+    # State 17 MATCH 3 with value 3
+    # State 18 («label_2») MATCH 4 with value 4
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) where f1(x)            => 1
         Foo(1, y) where f2(y)            => 2
         Foo(x, y) where (f1(x) && f2(y)) => 3
         _                                => 4
-    end) == 20
+    end) == 18
 end
 
 @testset "test for sharing where clause disjuncts" begin
-    # State 1 TEST «input_value» isa Main.TempC.Foo ELSE: State 20 («label_2»)
+    # State 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: State 18 («label_2»)
     # State 2 FETCH «input_value.x» := «input_value».x
     # State 3 FETCH «input_value.y» := «input_value».y
     # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
     # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
     # State 6 TEST !«where_0» ELSE: State 8 («label_5»)
     # State 7 MATCH 1 with value 1
-    # State 8 («label_5») TEST «input_value.x» == 1 ELSE: State 20 («label_2»)
-    # State 9 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 10 TEST !«where_1» THEN: State 14 («label_6») ELSE: State 20 («label_2»)
-    # State 11 («label_3») TEST «input_value.x» == 1 ELSE: State 15 («label_4»)
-    # State 12 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 13 TEST !«where_1» ELSE: State 20 («label_2»)
-    # State 14 («label_6») MATCH 2 with value 2
-    # State 15 («label_4») FETCH «where_0» := (f1)((identity)(«input_value.x»))
-    # State 16 TEST !«where_0» ELSE: State 20 («label_2»)
-    # State 17 FETCH «where_1» := (f2)((identity)(«input_value.y»))
-    # State 18 TEST !«where_1» ELSE: State 20 («label_2»)
-    # State 19 MATCH 3 with value 3
-    # State 20 («label_2») MATCH 4 with value 5
+    # State 8 («label_4») TEST «input_value.x» == 1 THEN: State 10 ELSE: State 18 («label_2»)
+    # State 9 («label_5») TEST «input_value.x» == 1 ELSE: State 13 («label_3»)
+    # State 10 FETCH «where_1» := (f2)(«input_value.y»)
+    # State 11 TEST where !«where_1» ELSE: State 18 («label_2»)
+    # State 12 MATCH 2 with value 2
+    # State 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
+    # State 14 TEST where !«where_0» ELSE: State 18 («label_2»)
+    # State 15 FETCH «where_1» := (f2)(«input_value.y»)
+    # State 16 TEST where !«where_1» ELSE: State 18 («label_2»)
+    # State 17 MATCH 3 with value 3
+    # State 18 («label_2») MATCH 4 with value 5
     @test (Rematch2.@match2_count_states some_value begin
         Foo(x, 2) where !f1(x)            => 1
         Foo(1, y) where !f2(y)            => 2
         Foo(x, y) where !(f1(x) || f2(y)) => 3
         _                                 => 5
-    end) == 20
+    end) == 18
 end
 
 @testset "exercise the dumping code for coverage" begin
