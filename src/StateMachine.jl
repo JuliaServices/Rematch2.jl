@@ -221,11 +221,6 @@ end
 # the decision automaton.  We define `hash` and `==` to take account of only what matters.
 # Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `CodePoint`.
 mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
-    # A label to produce in the code at entry to the code where
-    # this node is implemented, if one is needed.  This is not produced
-    # when this struct is created, but later during code generation.
-    label::Union{Nothing, Symbol}
-
     # The selected action to take from this node: either
     # - Case whose tests have all passed, or
     # - A bound pattern to perform and then move on to the next node, or
@@ -244,7 +239,7 @@ mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
     @_const _cached_hash::UInt64
     function DeduplicatedAutomatonNode(action, next)
         action isa CasePartialResult && @assert action.pattern isa BoundTruePattern
-        new(nothing, action, next, hash((action, next)))
+        new(action, next, hash((action, next)))
     end
 end
 Base.hash(node::DeduplicatedAutomatonNode, h::UInt64) = hash(node._cached_hash, h)
@@ -255,39 +250,28 @@ function Base.:(==)(a::DeduplicatedAutomatonNode, b::DeduplicatedAutomatonNode)
         isequal(a.action, b.action) &&
         isequal(a.next, b.next)
 end
-function ensure_label!(node::DeduplicatedAutomatonNode, binder::BinderContext)
-    if node.label isa Nothing
-        node.label = gensym("label", binder)
-    end
-end
 
 #
 # Deduplicate a code point, given the deduplications of the downstream code points.
+# Has the side-effect of adding a mapping to the dict.
 #
-function dedup(
+function dedup!(
     dict::Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode},
     node::AutomatonNode,
     binder::BinderContext)
     next = if node.next isa Tuple{}
         node.next
     elseif node.next isa Tuple{AutomatonNode}
-        (dedup(dict, node.next[1], binder),)
+        (dedup!(dict, node.next[1], binder),)
     elseif node.next isa Tuple{AutomatonNode, AutomatonNode}
-        t = dedup(dict, node.next[1], binder)
-        f = dedup(dict, node.next[2], binder)
-        # we might fall through to the true label, but we always jump to the false label
-        ensure_label!(f, binder)
+        t = dedup!(dict, node.next[1], binder)
+        f = dedup!(dict, node.next[2], binder)
         (t, f)
     else
         error("Unknown next type: $(node.next)")
     end
     key = DeduplicatedAutomatonNode(node.action, next)
     result = get!(dict, key, key)
-    if result !== key
-        # The node already existed, so it must have had two predecessors
-        # We will need a label for one of them to use in the generated code
-        ensure_label!(result, binder)
-    end
     result
 end
 
@@ -299,12 +283,8 @@ function deduplicate_automaton(entry::AutomatonNode, binder::BinderContext)
     result = Vector{DeduplicatedAutomatonNode}()
     top_down_nodes = reachable_states(entry)
     for e in Iterators.reverse(top_down_nodes)
-        d = dedup(dedup_map, e, binder)
-        if d.label === nothing
-            # It is a newly seen node
-            push!(result, d)
-        end
+        _ = dedup!(dedup_map, e, binder)
     end
-    new_entry = dedup(dedup_map, entry, binder)
+    new_entry = dedup!(dedup_map, entry, binder)
     return reachable_states(new_entry)
 end

@@ -77,19 +77,27 @@ end
 #
 # Generate all of the code given the entry point
 #
-function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, value, location::LineNumberNode, binder::BinderContext)
+function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospecialize(value), location::LineNumberNode, binder::BinderContext)
     result_variable = gensym("match_result")
     result_label = gensym("completed")
     emit = Any[location, :($(binder.input_variable) = $value)]
 
     # put the first node last so it will be the first to be emitted
     reverse!(top_down_nodes)
-    togen = top_down_nodes # but now it's in the right order to consume from the end
+    togen = top_down_nodes # now it's in the right order to consume from the end
+
+    # Because we are producing code in a top-down topologically-sorted order,
+    # all of the `@goto`s that we emit are forward.  So we are guaranteed to emit
+    # the `@goto` (and calling `label!`) before we hit the node where we need the `@label`.
+    labels = IdDict{DeduplicatedAutomatonNode, Symbol}()
+    function label!(code::DeduplicatedAutomatonNode)
+        get!(() -> gensym("label", binder), labels, code)
+    end
 
     while !isempty(togen)
         node = pop!(togen)
-        if node.label isa Symbol
-            push!(emit, :(@label $(node.label)))
+        if node in keys(labels)
+            push!(emit, :(@label $(labels[node])))
         end
         action = node.action
         if action isa CasePartialResult
@@ -102,19 +110,18 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, value,
             push!(emit, code(action, binder))
             (next::DeduplicatedAutomatonNode,) = node.next
             if last(togen) != next
-                # we need a `goto`, since it isn't the next thing we can fall into
-                ensure_label!(next, binder)
-                push!(emit, :(@goto $(next.label)))
+                # We need a `goto`, since it isn't the next thing we can fall into.
+                # This call to `label` sets up the label in the `labels` map to be
+                # produced when we emit the target node.
+                push!(emit, :(@goto $(label!(next))))
             end
         elseif action isa BoundTestPattern
             push!(emit, action.location)
             next_true, next_false = node.next
-            @assert next_false.label isa Symbol
-            push!(emit, :($(code(action, binder)) || @goto $(next_false.label)))
+            push!(emit, :($(code(action, binder)) || @goto $(label!(next_false))))
             if last(togen) != next_true
-                # we need a `goto`, since it isn't the next thing we can fall into
-                ensure_label!(next_true, binder)
-                push!(emit, :(@goto $(next_true.label)))
+                # we need a `goto`, since it isn't the next thing we can fall into.
+                push!(emit, :(@goto $(label!(next_true))))
             end
         elseif action isa Expr
             push!(emit, action)
@@ -131,7 +138,7 @@ end
 #
 # Build the whole decision automaton from the syntax for the value and body
 #
-function build_automaton(location::LineNumberNode, mod::Module, value, body)
+function build_automaton(location::LineNumberNode, mod::Module, @nospecialize(value), body)
     if body isa Expr && body.head == :call && body.args[1] == :(=>)
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
