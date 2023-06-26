@@ -214,11 +214,13 @@ function bind_pattern!(
         try
             bound_type = Core.eval(binder.mod, Expr(:block, location, T))
         catch ex
-            error("$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
+            error("$(location.file):$(location.line): Could not bind `$T` as a type " *
+                  "(due to `$ex`).")
         end
 
         if !(bound_type isa Type)
-            error("$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
+            error("$(location.file):$(location.line): Attempted to match " *
+                  "non-type `$T` as a type.")
         end
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
         # Support `::T where ...` even though the where clause parses as
@@ -242,12 +244,15 @@ function bind_pattern!(
         T = source.args[1]
         subpatterns = source.args[2:length(source.args)]
         len = length(subpatterns)
-        named_fields = [pat.args[1] for pat in subpatterns if (pat isa Expr) && pat.head == :kw]
+        named_fields = [pat.args[1] for pat in subpatterns
+                                    if (pat isa Expr) && pat.head == :kw]
         named_count = length(named_fields)
         if named_count != length(unique(named_fields))
-            error("$(location.file):$(location.line): Pattern `$source` has duplicate named arguments $named_fields.")
+            error("$(location.file):$(location.line): Pattern `$source` has duplicate " *
+                  "named arguments $named_fields.")
         elseif named_count != 0 && named_count != len
-            error("$(location.file):$(location.line): Pattern `$source` mixes named and positional arguments.")
+            error("$(location.file):$(location.line): Pattern `$source` mixes named " *
+                  "and positional arguments.")
         end
 
         match_positionally = named_count == 0
@@ -256,7 +261,12 @@ function bind_pattern!(
         pattern0, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
-        field_names::Tuple = infer_fieldnames(bound_type, len, match_positionally, location)
+        field_names::Tuple = fieldnames(bound_type)
+        if match_positionally && len != length(field_names)
+            error("$(location.file):$(location.line): The type `$bound_type` has " *
+                  "$(length(field_names)) fields but the pattern expects $len fields.")
+        end
+
         for i in 1:len
             pat = subpatterns[i]
             if match_positionally
@@ -267,7 +277,8 @@ function bind_pattern!(
                 field_name = pat.args[1]
                 pattern_source = pat.args[2]
                 if !(field_name in field_names)
-                    error("$(location.file):$(location.line): Type `$bound_type` has no field `$field_name`.")
+                    error("$(location.file):$(location.line): Type `$bound_type` has " *
+                          "no field `$field_name`.")
                 end
             end
 
@@ -333,7 +344,8 @@ function bind_pattern!(
         subpatterns = source.args
         splat_count = count(s -> is_expr(s, :...), subpatterns)
         if splat_count > 1
-            error("$(location.file):$(location.line): More than one `...` in pattern `$source`.")
+            error("$(location.file):$(location.line): More than one `...` in " *
+                  "pattern `$source`.")
         end
 
         # produce a check that the input is an array (or tuple)
@@ -431,26 +443,16 @@ function join_where_clause(pattern, where_clause, location, binder, assigned)
 end
 
 #
-# Infer which fields to match in a positional struct pattern by inspecting the set
-# of constructors.  It would be nice to exclude constructors that have
-# required keyword parameters, but the Julia APIs offer no simple way to determine
-# which keyword parameters have defaults.  That's because keyword parameters without
-# defaults are just rewritten into keyword parameters with defaults that throw an
-# exception at runtime.  So we exclude functions that have any keyword parameters.
-# If that ends up being problematic, we'll revisit the strategy.
+# Return a tuple containing the ordered list of the names (as Symbols) of fields that
+# can be matched either nominally or positionally.  This list should exclude synthetic
+# fields that are produced by packages such as Mutts and AutoHashEqualsCached.  This
+# function may be overridden by the client to hide fields that should not be matched.
 #
-function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, location::LineNumberNode)
-    members = try
-        Rematch2.fieldnames(type)
-    catch ex
-        error("$(location.file):$(location.line): Could not determine the field names of `$type`.")
-    end
-
-    match_positionally || return members
-    if len != length(members)
-        error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern expects $len fields.")
-    end
-    return members
+function fieldnames(type::Type)
+    # TODO: is this a reasonable name for this function?  Clients who add hidden fields
+    # to their types will need to override this function to hide those fields.  The name
+    # is not exported, so it should not conflict with Base.fieldnames.
+    Base.fieldnames(type)
 end
 
 # Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
@@ -493,7 +495,8 @@ function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
             tmpvar = get(assigned, patvar, nothing)
             if tmpvar isa Symbol
                 if !haskey(new_assigned, patvar)
-                    new_assigned = ImmutableDict{Symbol, Symbol}(new_assigned, patvar, tmpvar)
+                    new_assigned = ImmutableDict{Symbol, Symbol}(
+                        new_assigned, patvar, tmpvar)
                 end
                 # Prevent the variable from being assigned to in user code
                 return Expr(:block, tmpvar)
