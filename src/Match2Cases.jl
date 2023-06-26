@@ -58,8 +58,10 @@ function build_automaton_core(
             # If we don't understand the type annotation, then we'll just ignore it.
         end
         binder.types[binder.input_variable] = input_type
-        filter = BoundTypeTestPattern(location, type, binder.input_variable, input_type)
-        entry = remove(filter, true, entry, binder)
+        if input_type !== Any
+            filter = BoundTypeTestPattern(location, type, binder.input_variable, input_type)
+            entry = remove(filter, true, entry, binder)
+        end
     end
     binder.types[binder.input_variable] = input_type
 

@@ -6,7 +6,6 @@ end
 
 # return the code needed for a pattern.
 code(bound_pattern::BoundTruePattern, binder::BinderContext) = true
-# code(bound_pattern::BoundFalsePattern, binder::BinderContext) = false
 function code(bound_pattern::BoundEqualValueTestPattern, binder::BinderContext)
     :($isequal($(bound_pattern.input), $(bound_pattern.value)))
 end
