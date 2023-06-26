@@ -422,7 +422,7 @@ end # of automaton
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Could not determine the field names of `$MyPair`."
+                @test e.msg == "May not @match MyPair"
             end
         end
     end

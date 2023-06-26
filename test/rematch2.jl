@@ -77,23 +77,6 @@ end
 
 end
 
-struct T207a
-    x; y; z
-    T207a(x, y) = new(x, y, x)
-end
-Rematch2.fieldnames(::Type{T207a}) = (:x, :y)
-
-struct T207b
-    x; y; z
-    T207b(x, y; z = x) = new(x, y, z)
-end
-
-struct T207c
-    x; y; z
-end
-T207c(x, y) = T207c(x, y, x)
-Rematch2.fieldnames(::Type{T207c}) = (:x, :y)
-
 @enum Color Yellow Green Blue
 
 macro casearm1(pattern, value)
@@ -373,7 +356,7 @@ end
     end
 end
 
-@testset "use Rematch2.fieldnames to identify fields 1" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 1" begin
     # struct T207a
     #     x; y; z
     #     T207a(x, y) = new(x, y, x)
@@ -389,7 +372,7 @@ end
     @test r == 2
 end
 
-@testset "use Rematch2.fieldnames to identify fields 2" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 2" begin
     # struct T207b
     #     x; y; z
     #     T207b(x, y; z = x) = new(x, y, z)
@@ -410,7 +393,7 @@ end
     end
 end
 
-@testset "use Rematch2.fieldnames to identify fields 3" begin
+@testset "infer positional parameters from Rematch2.fieldnames(T) 3" begin
     # struct T207c
     #     x; y; z
     # end
@@ -422,6 +405,22 @@ end
     @test r == 1
     r = @match2 T207c(1, 2) begin
         T207c(x, y) => y
+    end
+    @test r == 2
+end
+
+@testset "infer positional parameters from Rematch2.fieldnames(T) 4" begin
+    # struct T207d
+    #     x; z; y
+    #     T207d(x, y) = new(x, 23, y)
+    # end
+    # Rematch2.fieldnames(::Type{T207d}) = (:x, :y)
+    r = @match2 T207d(1, 2) begin
+        T207d(x, y) => x
+    end
+    @test r == 1
+    r = @match2 T207d(1, 2) begin
+        T207d(x, y) => y
     end
     @test r == 2
 end
@@ -461,7 +460,7 @@ end
         end
     end
 
-    @testset "attempt to match non-type" begin
+    @testset "attempt to match non-type 1" begin
         let line = 0
             try
                 line = (@__LINE__) + 2
@@ -474,6 +473,23 @@ end
                 e = ex.error
                 @test e isa ErrorException
                 @test e.msg == "$file:$line: Invalid type name: `1`."
+            end
+        end
+    end
+
+    @testset "attempt to match non-type 2" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 Foo(1, 2) begin
+                    ::Base => 1
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Attempted to match non-type `Base` as a type."
             end
         end
     end
