@@ -326,6 +326,53 @@ end
     end) == 18
 end
 
+@testset "exercise the dumping code for coverage" begin
+    io = IOBuffer()
+    @test (Rematch2.@match2_dumpall io some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end) == 18
+    @test (Rematch2.@match2_dump io some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end) == 18
+end
+
+@testset "test for correct semantics of complex where clauses" begin
+    function f1(a, b, c, d, e, f, g, h)
+        @match2 (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
+            _ => 6
+        end
+    end
+    function f2(a, b, c, d, e, f, g, h)
+        # For reference we use the brute-force implementation of pattern-matching that just
+        # performs the tests sequentially, like writing an if-elseif-else chain.
+        Rematch2.@match (a, b, c, d, e, f, g, h) begin
+            (a, b, c, d, e, f, g, h) where (!(!((!a || !b) && (c || !d)) || !(!e || f) && (g || h))) => 1
+            (a, b, c, d, e, f, g, h) where (!((!a || b) && (c || d) || (e || !f) && (!g || !h))) => 2
+            (a, b, c, d, e, f, g, h) where (!((a || b) && !(!c || !d) || !(!(!e || f) && !(g || !h)))) => 3
+            (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
+            (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
+            _ => 6
+        end
+    end
+    function f3(a, b, c, d, e, f, g, h)
+        @test f1(a, b, c, d, e, f, g, h) == f2(a, b, c, d, e, f, g, h)
+    end
+    for t in Iterators.product(([false, true] for a in 1:8)...,)
+        f3(t...)
+    end
+end
+
 @testset "use Rematch2.fieldnames to identify fields 1" begin
     # struct T207a
     #     x; y; z
