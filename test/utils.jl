@@ -84,3 +84,8 @@ struct T207d
     T207d(x, y) = new(x, 23, y)
 end
 Rematch2.fieldnames(::Type{T207d}) = (:x, :y)
+
+struct BoolPair
+    a::Bool
+    b::Bool
+end

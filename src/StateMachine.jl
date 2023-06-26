@@ -107,6 +107,13 @@ mutable struct AutomatonNode <: AbstractAutomatonNode
     @_const _cached_hash::UInt64
 
     function AutomatonNode(cases::Vector{CasePartialResult})
+        cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
+        for i in eachindex(cases)
+            if is_irrefutable(cases[i].pattern)
+                cases = cases[1:i]
+                break
+            end
+        end
         new(ImmutableVector(cases), nothing, nothing, hash(cases, 0xc98a9a23c2d4d915))
     end
 end
@@ -116,24 +123,14 @@ function Base.:(==)(a::AutomatonNode, b::AutomatonNode)
         a._cached_hash == b._cached_hash &&
         isequal(a.cases, b.cases)
 end
-function with_cases(node::AutomatonNode, cases::Vector{CasePartialResult})
-    cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
-    for i in eachindex(cases)
-        if is_irrefutable(cases[i].pattern)
-            cases = cases[1:i]
-            break
-        end
-    end
-    AutomatonNode(cases)
-end
 function name(node::T, id::IdDict{T, Int}) where { T <: AbstractAutomatonNode }
-    "State $(id[node])"
+    "Node $(id[node])"
 end
 function successors(c::T)::Vector{T} where { T <: AbstractAutomatonNode }
     @assert !(c.next isa Nothing)
     collect(c.next)
 end
-function reachable_states(root::T)::Vector{T} where { T <: AbstractAutomatonNode }
+function reachable_nodes(root::T)::Vector{T} where { T <: AbstractAutomatonNode }
     topological_sort(successors, [root])
 end
 
@@ -141,7 +138,7 @@ end
 # Support for pretty-printing
 #
 function dumpall(io::IO, all::Vector{T}, binder::BinderContext, long::Bool) where { T <: AbstractAutomatonNode }
-    # Make a map from each CodePoint to its index
+    # Make a map from each node to its index
     id = IdDict{T, Int}(map(((i,s),) -> s => i, enumerate(all))...)
     print(io, "Decision Automaton: ($(length(all)) nodes) input ")
     pretty(io, binder.input_variable)
@@ -154,7 +151,7 @@ function dumpall(io::IO, all::Vector{T}, binder::BinderContext, long::Bool) wher
     length(all)
 end
 
-# Pretty-print either a CodePoint or a DeduplicatedAutomatonNode
+# Pretty-print either an AutomatonNode or a DeduplicatedAutomatonNode
 function pretty(
     io::IO,
     node::T,
@@ -219,7 +216,7 @@ end
 
 # We merge nodes with identical behavior, bottom-up, to minimize the size of
 # the decision automaton.  We define `hash` and `==` to take account of only what matters.
-# Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `CodePoint`.
+# Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `AutomatonNode`.
 mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
     # The selected action to take from this node: either
     # - Case whose tests have all passed, or
@@ -231,9 +228,10 @@ mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
     # The next code point(s):
     # - Tuple{} if the action is a case which was matched or a MatchFailure
     # - Tuple{DeduplicatedAutomatonNode} if the action was a fetch pattern. It designates
-    #   the code to perform after the fetch.
-    # - Tuple{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode} if the action is a test.  These are the states
-    #   to go to if the result of the test is true ([1]) or false ([2]).
+    #   the note to go to after the fetch.
+    # - Tuple{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode} if the action is a
+    #   test.  These are the nodes to go to if the result of the test is true ([1]) or
+    #   false ([2]).
     @_const next::Union{Tuple{}, Tuple{DeduplicatedAutomatonNode}, Tuple{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode}}
 
     @_const _cached_hash::UInt64
@@ -276,15 +274,15 @@ function dedup!(
 end
 
 #
-# Deduplicate the decision automaton by collapsing behaviorally identical states.
+# Deduplicate the decision automaton by collapsing behaviorally identical nodes.
 #
 function deduplicate_automaton(entry::AutomatonNode, binder::BinderContext)
     dedup_map = Dict{DeduplicatedAutomatonNode, DeduplicatedAutomatonNode}()
     result = Vector{DeduplicatedAutomatonNode}()
-    top_down_nodes = reachable_states(entry)
+    top_down_nodes = reachable_nodes(entry)
     for e in Iterators.reverse(top_down_nodes)
         _ = dedup!(dedup_map, e, binder)
     end
     new_entry = dedup!(dedup_map, entry, binder)
-    return reachable_states(new_entry)
+    return reachable_nodes(new_entry)
 end

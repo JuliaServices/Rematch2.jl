@@ -44,8 +44,26 @@ function build_automaton_core(
     # Track the set of reachable cases (by index)
     reachable = Set{Int}()
 
-    # Make an entry point for the decision automaton
+    # Make an entry point for the automaton
     entry = AutomatonNode(cases)
+
+    # If the value had a type annotation, then we can use that to
+    # narrow down the cases that we need to consider.
+    input_type = Any
+    if value isa Expr && value.head == :(::) && length(value.args) == 2
+        type = value.args[2]
+        try
+            input_type = bind_type(location, type, binder.input_variable, binder)
+        catch
+            # If we don't understand the type annotation, then we'll just ignore it.
+        end
+        binder.types[binder.input_variable] = input_type
+        if input_type !== Any
+            filter = BoundTypeTestPattern(location, type, binder.input_variable, input_type)
+            entry = remove(filter, true, entry, binder)
+        end
+    end
+    binder.types[binder.input_variable] = input_type
 
     # Build the decision automaton with the given entry point
     work_queue = Set{AutomatonNode}([entry])
@@ -158,7 +176,7 @@ end
 
 #
 # Build the whole decision automaton from the syntax for the value and body,
-# optimize it, and return the resulting set of states along with the binder.
+# optimize it, and return the resulting set of nodes along with the binder.
 #
 function build_deduplicated_automaton(location::LineNumberNode, mod::Module, value, body)
     entry, binder = build_automaton(location::LineNumberNode, mod::Module, value, body)
@@ -238,7 +256,7 @@ function make_next(
     node::AutomatonNode,
     action::BoundFetchPattern,
     binder::BinderContext)::Tuple{AutomatonNode}
-    succ = remove(action, node)
+    succ = remove(action, node, binder)
     succ = intern(succ, binder)
     return (succ,)
 end
@@ -248,63 +266,91 @@ function make_next(
     node::AutomatonNode,
     action::BoundTestPattern,
     binder::BinderContext)::Tuple{AutomatonNode, AutomatonNode}
-    true_next = remove(action, true, node)
-    false_next = remove(action, false, node)
+    true_next = remove(action, true, node, binder)
+    false_next = remove(action, false, node, binder)
     true_next = intern(true_next, binder)
     false_next = intern(false_next, binder)
     return (true_next, false_next)
 end
 
-# The next node is the same but without the action, since it has been done.
-function remove(action::BoundFetchPattern, node::AutomatonNode)::AutomatonNode
-    cases = map(c -> remove(action, c), node.cases)
-    return with_cases(node, cases)
+# The next code point is the same but without the action, since it has been done.
+function remove(action::BoundFetchPattern, node::AutomatonNode, binder::BinderContext)::AutomatonNode
+    cases = map(c -> remove(action, c, binder), node.cases)
+    succ = AutomatonNode(cases)
+
+    # If we know the type of the fetched value, we can assert that in downstream code.
+    bound_type = action.type
+    if bound_type !== Any
+        temp = get_temp(binder, action)
+        filter = BoundTypeTestPattern(action.location, action.source, temp, bound_type)
+        succ = remove(filter, true, succ, binder)
+    end
+    succ
 end
-function remove(action::BoundTestPattern, sense::Bool, node::AutomatonNode)::AutomatonNode
-    cases = map(c -> remove(action, sense, c), node.cases)
-    return with_cases(node, cases)
+function remove(action::BoundTestPattern, sense::Bool, node::AutomatonNode, binder::BinderContext)::AutomatonNode
+    cases = map(c -> remove(action, sense, c, binder), node.cases)
+    return AutomatonNode(cases)
 end
 
-function remove(action::BoundTestPattern, sense::Bool, case::CasePartialResult)::CasePartialResult
-    with_pattern(case, remove(action, sense, case.pattern))
+function remove(action::BoundTestPattern, action_result::Bool, case::CasePartialResult, binder::BinderContext)::CasePartialResult
+    with_pattern(case, remove(action, action_result, case.pattern, binder))
 end
-function remove(action::BoundFetchPattern, case::CasePartialResult)::CasePartialResult
-    with_pattern(case, remove(action, case.pattern))
+function remove(action::BoundFetchPattern, case::CasePartialResult, binder::BinderContext)::CasePartialResult
+    with_pattern(case, remove(action, case.pattern, binder))
 end
 
 #
 # Remove the given action from a pattern.
 #
-remove(action::BoundFetchPattern, pattern::BoundPattern)::BoundPattern = pattern
-remove(action::BoundTestPattern, sense::Bool, pattern::BoundPattern)::BoundPattern = pattern
-function remove(action::BoundFetchPattern, pattern::BoundFetchPattern)::BoundPattern
+remove(action::BoundFetchPattern, pattern::BoundPattern, binder::BinderContext)::BoundPattern = pattern
+remove(action::BoundTestPattern, action_result::Bool, pattern::BoundPattern, binder::BinderContext)::BoundPattern = pattern
+function remove(action::BoundFetchPattern, pattern::BoundFetchPattern, binder::BinderContext)::BoundPattern
     return (action == pattern) ? BoundTruePattern(pattern.location, pattern.source) : pattern
 end
-function remove(action::BoundFetchPattern, pattern::Union{BoundAndPattern,BoundOrPattern})::BoundPattern
-    subpatterns = collect(BoundPattern, map(p -> remove(action, p), pattern.subpatterns))
+function remove(action::BoundFetchPattern, pattern::Union{BoundAndPattern,BoundOrPattern}, binder::BinderContext)::BoundPattern
+    subpatterns = collect(BoundPattern, map(p -> remove(action, p, binder), pattern.subpatterns))
     return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
 end
-function remove(action::BoundTestPattern, sense::Bool, pattern::BoundTestPattern)::BoundPattern
-    return (action == pattern) ? BoundBoolPattern(pattern.location, pattern.source, sense) : pattern
+function remove(action::BoundTestPattern, action_result::Bool, pattern::BoundTestPattern, binder::BinderContext)::BoundPattern
+    return (action == pattern) ? BoundBoolPattern(pattern.location, pattern.source, action_result) : pattern
 end
-function remove(action::BoundTestPattern, sense::Bool, pattern::Union{BoundAndPattern,BoundOrPattern})::BoundPattern
-    subpatterns = collect(BoundPattern, map(p -> remove(action, sense, p), pattern.subpatterns))
+function remove(action::BoundEqualValueTestPattern, action_result::Bool, pattern::BoundEqualValueTestPattern, binder::BinderContext)::BoundPattern
+    if action.input != pattern.input
+        return pattern
+    end
+    if isequal(action.value, pattern.value)
+        return BoundBoolPattern(pattern.location, pattern.source, action_result)
+    end
+
+    # As a special case, if the input variable is of type Bool, then we know that true and false
+    # are the only values it can hold.
+    type = get!(() -> Any, binder.types, action.input)
+    if type == Bool && action.value isa Bool && pattern.value isa Bool
+        @assert action.value != pattern.value # because we already checked for equality
+        # If the one succeeded, then the other one fails
+        return BoundBoolPattern(pattern.location, pattern.source, !action_result)
+    end
+
+    return pattern
+end
+function remove(action::BoundTestPattern, action_result::Bool, pattern::Union{BoundAndPattern,BoundOrPattern}, binder::BinderContext)::BoundPattern
+    subpatterns = collect(BoundPattern, map(p -> remove(action, action_result, p, binder), pattern.subpatterns))
     return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
 end
-function remove(action::BoundWhereTestPattern, sense::Bool, pattern::BoundWhereTestPattern)::BoundPattern
+function remove(action::BoundWhereTestPattern, action_result::Bool, pattern::BoundWhereTestPattern, binder::BinderContext)::BoundPattern
     # Two where tests can be related by being the inverse of each other.
     action.input == pattern.input || return pattern
-    replacement_value = (action.inverted == pattern.inverted) == sense
+    replacement_value = (action.inverted == pattern.inverted) == action_result
     return BoundBoolPattern(pattern.location, pattern.source, replacement_value)
 end
-function remove(action::BoundTypeTestPattern, sense::Bool, pattern::BoundTypeTestPattern)::BoundPattern
+function remove(action::BoundTypeTestPattern, action_result::Bool, pattern::BoundTypeTestPattern, binder::BinderContext)::BoundPattern
     # Knowing the result of one type test can give information about another.  For
     # example, if you know `x` is a `String`, then you know that it isn't an `Int`.
     if (action == pattern)
-        return BoundBoolPattern(pattern.location, pattern.source, sense)
+        return BoundBoolPattern(pattern.location, pattern.source, action_result)
     elseif action.input != pattern.input
         return pattern
-    elseif sense
+    elseif action_result
         # the type test succeeded.
         if action.type <: pattern.type
             return BoundTruePattern(pattern.location, pattern.source)
@@ -405,7 +451,7 @@ end
 
 # Return the count of the number of nodes that would be generated by the match,
 # but otherwise does not generate any code for the match.
-macro match2_count_states(value, body)
+macro match2_count_nodes(value, body)
     top_down_nodes, binder = build_deduplicated_automaton(__source__, __module__, value, body)
     length(top_down_nodes)
 end
@@ -434,12 +480,12 @@ end
 
 function handle_match2_dump_verbose(__source__, __module__, io, value, body)
     entry, binder = build_automaton(__source__, __module__, value, body)
-    top_down_nodes = reachable_states(entry)
+    top_down_nodes = reachable_nodes(entry)
 
     esc(quote
         # print the dump of the decision automaton before deduplication
         $dumpall($io, $top_down_nodes, $binder, true)
-        # but return the count of deduplicated states.
+        # but return the count of deduplicated nodes.
         $length($deduplicate_automaton($entry, $binder))
     end)
 end

@@ -5,12 +5,7 @@ function assignments(assigned::ImmutableDict{Symbol, Symbol})
 end
 
 # return the code needed for a pattern.
-function code(bound_pattern::BoundPattern, ::BinderContext)
-    location = bound_pattern.location
-    error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)), ::$BinderState)` not implemented.")
-end
 code(bound_pattern::BoundTruePattern, binder::BinderContext) = true
-code(bound_pattern::BoundFalsePattern, binder::BinderContext) = false
 function code(bound_pattern::BoundEqualValueTestPattern, binder::BinderContext)
     :($isequal($(bound_pattern.input), $(bound_pattern.value)))
 end

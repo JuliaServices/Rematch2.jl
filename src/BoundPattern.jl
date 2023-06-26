@@ -233,6 +233,7 @@ struct BoundFetchFieldPattern <: BoundFetchPattern
     source::Any
     input::Symbol
     field_name::Symbol
+    type::Type
 end
 # For the purposes of whether or not two fetches are the same: if they are fetching
 # the same field name (from the same input), then yes.
@@ -256,6 +257,7 @@ struct BoundFetchIndexPattern <: BoundFetchPattern
     input::Symbol
     # index value.  If negative, it is from the end.  `-1` accesses the last element
     index::Int
+    type::Type
 end
 function Base.hash(a::BoundFetchIndexPattern, h::UInt64)
     hash((a.input, a.index, 0x820a6d07cc13ac86), h)
@@ -275,6 +277,7 @@ struct BoundFetchRangePattern <: BoundFetchPattern
     input::Symbol
     first_index::Int # first index to include
     from_end::Int    # distance from the end for the last included index; 0 to include the last element
+    type::Type
 end
 function Base.hash(a::BoundFetchRangePattern, h::UInt64)
     hash((a.input, a.first_index, a.from_end, 0x7aea7756428a1646), h)
@@ -292,6 +295,7 @@ struct BoundFetchLengthPattern <: BoundFetchPattern
     location::LineNumberNode
     source::Any
     input::Symbol
+    type::Type
 end
 function Base.hash(a::BoundFetchLengthPattern, h::UInt64)
     hash((a.input, 0xa7167fae5a24c457), h)
@@ -320,6 +324,7 @@ struct BoundFetchExpressionPattern <: BoundFetchPattern
     value::Any    # value to be  preserved, e.g. previous binding of a variable
     assigned::ImmutableDict{Symbol, Symbol}
     key::Union{Nothing, Symbol}   # key to identify the temp, or user variable to be preserved
+    type::Type
 end
 function Base.hash(a::BoundFetchExpressionPattern, h::UInt64)
     hash((a.value, a.key, 0x53f0f6a137a891d8), h)

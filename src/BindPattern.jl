@@ -19,7 +19,10 @@ struct BinderContext
     # The bindings to be used for each intermediate computations.  This maps from the
     # computation producing the value (or the pattern variable that needs a temp)
     # to the symbol for the temp holding that value.
-    assignments::Dict{Union{BoundFetchPattern, Symbol}, Symbol}
+    assignments::Dict{BoundFetchPattern, Symbol}
+
+    # We track the type of each intermediate value.  If we don't know, then `Any`.
+    types::Dict{Symbol, Type}
 
     # The set of type syntax forms that have asserted bindings in assertions
     asserted_types::Vector{Any}
@@ -28,7 +31,7 @@ struct BinderContext
     assertions::Vector{Any}
 
     # A dictionary used to intern AutomatonNode values in Match2Cases.
-    intern::Dict
+    intern::Dict # {AutomatonNode, AutomatonNode}
 
     # A counter used to dispense unique integers to make prettier gensyms
     num_gensyms::Ref{Int}
@@ -38,9 +41,10 @@ struct BinderContext
             mod,
             gensym("input_value"),
             Dict{BoundFetchPattern, Symbol}(),
+            Dict{Symbol, Type}(),
             Vector{Any}(),
             Vector{Any}(),
-            Dict(),
+            Dict(), # {AutomatonNode, AutomatonNode}(),
             Ref{Int}(0)
         )
     end
@@ -51,6 +55,21 @@ function gensym(base::String, binder::BinderContext)::Symbol
     s
 end
 gensym(base::String)::Symbol = Base.gensym(base)
+function bind_type(location, T, input, binder)
+    # bind type at macro expansion time.  It will be verified at runtime.
+    bound_type = nothing
+    try
+        bound_type = Core.eval(binder.mod, Expr(:block, location, T))
+    catch ex
+        error("$(location.file):$(location.line): Could not bind `$T` as a type (due to `$ex`).")
+    end
+
+    if !(bound_type isa Type)
+        error("$(location.file):$(location.line): Attempted to match non-type `$T` as a type.")
+    end
+
+    bound_type
+end
 
 #
 # Pretty-printing utilities helpful for displaying the decision automaton
@@ -126,16 +145,28 @@ end
 # to hold the value after the merge point.
 #
 function get_temp(binder::BinderContext, p::BoundFetchPattern)::Symbol
-    get!(binder.assignments, p) do; gentemp(p); end
+    temp = get!(binder.assignments, p) do; gentemp(p); end
+    if haskey(binder.types, temp)
+        binder.types[temp] = Union{p.type, binder.types[temp]}
+    else
+        binder.types[temp] = p.type
+    end
+    temp
 end
 function get_temp(binder::BinderContext, p::BoundFetchExpressionPattern)::Symbol
-    get!(binder.assignments, p) do
+    temp = get!(binder.assignments, p) do
         if p.key isa Symbol
             p.key
         else
             gensym("where", binder)
         end
     end
+    if haskey(binder.types, temp)
+        binder.types[temp] = Union{p.type, binder.types[temp]}
+    else
+        binder.types[temp] = p.type
+    end
+    temp
 end
 
 #
@@ -209,19 +240,7 @@ function bind_pattern!(
         # ::type
         T = source.args[1]
         T, where_clause = split_where(T, location)
-        # bind type at macro expansion time.  It will be verified at runtime.
-        bound_type = nothing
-        try
-            bound_type = Core.eval(binder.mod, Expr(:block, location, T))
-        catch ex
-            error("$(location.file):$(location.line): Could not bind `$T` as a type " *
-                  "(due to `$ex`).")
-        end
-
-        if !(bound_type isa Type)
-            error("$(location.file):$(location.line): Attempted to match " *
-                  "non-type `$T` as a type.")
-        end
+        bound_type = bind_type(location, T, input, binder)
         pattern = BoundTypeTestPattern(location, T, input, bound_type)
         # Support `::T where ...` even though the where clause parses as
         # part of the type.
@@ -231,7 +250,8 @@ function bind_pattern!(
         subpattern = source.args[1]
         T = source.args[2]
         T, where_clause = split_where(T, location)
-        pattern1, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
+        bound_type = bind_type(location, T, input, binder)
+        pattern1 = BoundTypeTestPattern(location, T, input, bound_type)
         pattern2, assigned = bind_pattern!(location, subpattern, input, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern1, pattern2])
         # Support `::T where ...` even though the where clause parses as
@@ -282,8 +302,17 @@ function bind_pattern!(
                 end
             end
 
-            field_temp = push_pattern!(patterns, binder,
-                BoundFetchFieldPattern(location, pattern_source, input, field_name))
+            field_type = nothing
+            for (fname, ftype) in zip(Base.fieldnames(bound_type), Base.fieldtypes(bound_type))
+                if fname == field_name
+                    field_type = ftype
+                    break
+                end
+            end
+            @assert field_type !== nothing
+
+            fetch = BoundFetchFieldPattern(location, pattern_source, input, field_name, field_type)
+            field_temp = push_pattern!(patterns, binder, fetch)
             bound_subpattern, assigned = bind_pattern!(
                 location, pattern_source, field_temp, binder, assigned)
             push!(patterns, bound_subpattern)
@@ -323,11 +352,11 @@ function bind_pattern!(
                 # between patterns.
                 temp = gensym(string("phi_", key), binder)
                 if v1 != temp
-                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), temp)
+                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), temp, Any)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
-                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), temp)
+                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), temp, Any)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
@@ -357,9 +386,7 @@ function bind_pattern!(
 
         # produce a check that the length of the input is sufficient
         length_temp = push_pattern!(patterns, binder,
-            BoundFetchLengthPattern(location, source, input))
-        length_temp = push_pattern!(patterns, binder,
-            BoundFetchLengthPattern(location, source, input))
+            BoundFetchLengthPattern(location, source, input, Any))
         check_length =
             if splat_count != 0
                 BoundRelationalTestPattern(
@@ -378,18 +405,14 @@ function bind_pattern!(
                 @assert !seen_splat
                 seen_splat = true
                 range_temp = push_pattern!(patterns, binder,
-                    BoundFetchRangePattern(location, subpattern, input, i, len-i))
-                range_temp = push_pattern!(patterns, binder,
-                    BoundFetchRangePattern(location, subpattern, input, i, len-i))
+                    BoundFetchRangePattern(location, subpattern, input, i, len-i, Any))
                 patterni, assigned = bind_pattern!(
                     location, subpattern.args[1], range_temp, binder, assigned)
                 push!(patterns, patterni)
             else
                 index = seen_splat ? (i - len - 1) : i
                 index_temp = push_pattern!(patterns, binder,
-                    BoundFetchIndexPattern(location, subpattern, input, index))
-                index_temp = push_pattern!(patterns, binder,
-                    BoundFetchIndexPattern(location, subpattern, input, index))
+                    BoundFetchIndexPattern(location, subpattern, input, index, Any))
                 patterni, assigned = bind_pattern!(
                     location, subpattern, index_temp, binder, assigned)
                 push!(patterns, patterni)
@@ -455,6 +478,7 @@ function fieldnames(type::Type)
     Base.fieldnames(type)
 end
 
+#
 # Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
 # we push negation operators down.  This permits us to share the parts of a where clause
 # between different rules.
@@ -477,7 +501,7 @@ function shred_where_clause(
         return result_type(location, guard, BoundPattern[left, right])
     else
         (guard0, assigned0) = subst_patvars(guard, assigned)
-        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0, nothing)
+        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0, nothing, Any)
         temp = get_temp(binder, fetch)
         test = BoundWhereTestPattern(location, guard, temp, inverted)
         return BoundAndPattern(location, guard, BoundPattern[fetch, test])

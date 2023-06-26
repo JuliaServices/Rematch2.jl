@@ -4,6 +4,79 @@
 # expansion of the `@match2` macro so we can use the known bindings
 # of types to generate more efficient code.
 
+file = Symbol(@__FILE__)
+
+@testset "@rematch2 tests 1" begin
+
+@testset "Check that `where` clauses are reparsed properly 1" begin
+    x = true
+    @test (@match2 3 begin
+        ::Int where x => 1
+        _ => 2
+    end) == 1
+
+    x = false
+    @test (@match2 3 begin
+        ::Int where x => 1
+        _ => 2
+    end) == 2
+end
+
+@testset "Check that `where` clauses are reparsed properly 2" begin
+    x = true
+    @test (@match2 3 begin
+        a::Int where x => a
+        _ => 2
+    end) == 3
+
+    x = false
+    @test (@match2 3 begin
+        a::Int where x => a
+        _ => 2
+    end) == 2
+end
+
+@testset "Check that `where` clauses are reparsed properly 3" begin
+    let line = 0
+        try
+            line = (@__LINE__) + 2
+            @eval @match2 Foo(1, 2) begin
+                (Foo where unbound)(1, 2) => 1
+            end
+            @test false
+        catch ex
+            @test ex isa LoadError
+            e = ex.error
+            @test e isa ErrorException
+            @test e.msg == "$file:$line: Unregognized pattern syntax `(Foo where unbound)(1, 2)`."
+        end
+    end
+end
+
+@testset "Check that `where` clauses are reparsed properly 4" begin
+    for b1 in [false, true]
+        for b2 in [false, true]
+            @test (@match2 3 begin
+                ::Int where b1 where b2 => 1
+                _ => 2
+            end) == ((b1 && b2) ? 1 : 2)
+        end
+    end
+end
+
+@testset "Check that `where` clauses are reparsed properly 5" begin
+    for b1 in [false, true]
+        for b2 in [false, true]
+            @test (@match2 3 begin
+                ::Int where b1 == b2 => 1
+                _ => 2
+            end) == ((b1 == b2) ? 1 : 2)
+        end
+    end
+end
+
+end
+
 @enum Color Yellow Green Blue
 
 macro casearm1(pattern, value)
@@ -14,9 +87,9 @@ macro casearm2(pattern, value)
     esc(:(@casearm1 $pattern $value))
 end
 
-@testset "@rematch2 tests" begin
-
 file = Symbol(@__FILE__)
+
+@testset "@rematch2 tests" begin
 
 @testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin
@@ -122,30 +195,30 @@ end
 end
 
 #
-# To print the decision automaton shown in comments below, replace @match2_count_states
+# To print the decision automaton shown in comments below, replace @match2_count_nodes
 # with @match2_dump and run the test.  To show the full details of how the decision
 # automaton was computed, try @match2_dumpall.
 #
 
 @testset "test for decision automaton optimizations 1" begin
-    # State 1 TEST «input_value» isa Foo ELSE: State 5 («label_0»)
-    # State 2 FETCH «input_value.y» := «input_value».y
-    # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_0»)
-    # State 4 MATCH 1 with value 1
-    # State 5 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Foo ELSE: Node 5 («label_0»)
+    # Node 2 FETCH «input_value.y» := «input_value».y
+    # Node 3 TEST «input_value.y» == 2 ELSE: Node 5 («label_0»)
+    # Node 4 MATCH 1 with value 1
+    # Node 5 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, 2) => 1
     end) == 5
 end
 
 @testset "test for decision automaton optimizations 2" begin
-    # State 1 TEST «input_value» isa Foo ELSE: State 6 («label_0»)
-    # State 2 FETCH «input_value.y» := «input_value».y
-    # State 3 TEST «input_value.y» == 2 ELSE: State 5 («label_1»)
-    # State 4 MATCH 1 with value 1
-    # State 5 («label_1») MATCH 2 with value 2
-    # State 6 («label_0») MATCH 3 with value 4
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Foo ELSE: Node 6 («label_0»)
+    # Node 2 FETCH «input_value.y» := «input_value».y
+    # Node 3 TEST «input_value.y» == 2 ELSE: Node 5 («label_1»)
+    # Node 4 MATCH 1 with value 1
+    # Node 5 («label_1») MATCH 2 with value 2
+    # Node 6 («label_0») MATCH 3 with value 4
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, 2) => 1
         Foo(_, _) => 2
         _ => 4
@@ -153,14 +226,14 @@ end
 end
 
 @testset "test for decision automaton optimizations 3" begin
-    # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
-    # State 2 FETCH «input_value.x» := «input_value».x
-    # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == 2 ELSE: State 6 («label_1»)
-    # State 5 MATCH 1 with value (identity)(«input_value.x»)
-    # State 6 («label_1») MATCH 2 with value 2
-    # State 7 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Foo ELSE: Node 7 («label_0»)
+    # Node 2 FETCH «input_value.x» := «input_value».x
+    # Node 3 FETCH «input_value.y» := «input_value».y
+    # Node 4 TEST «input_value.y» == 2 ELSE: Node 6 («label_1»)
+    # Node 5 MATCH 1 with value (identity)(«input_value.x»)
+    # Node 6 («label_1») MATCH 2 with value 2
+    # Node 7 («label_0») FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, 2) => x
         Foo(_, _) => 2
         _ => 4
@@ -168,14 +241,14 @@ end
 end
 
 @testset "test for decision automaton optimizations 4" begin
-    # State 1 TEST «input_value» isa Foo ELSE: State 7 («label_0»)
-    # State 2 FETCH «input_value.x» := «input_value».x
-    # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == «input_value.x» ELSE: State 6 («label_1»)
-    # State 5 MATCH 1 with value (identity)(«input_value.x»)
-    # State 6 («label_1») MATCH 2 with value 2
-    # State 7 («label_0») MATCH 3 with value 4
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Foo ELSE: Node 7 («label_0»)
+    # Node 2 FETCH «input_value.x» := «input_value».x
+    # Node 3 FETCH «input_value.y» := «input_value».y
+    # Node 4 TEST «input_value.y» == «input_value.x» ELSE: Node 6 («label_1»)
+    # Node 5 MATCH 1 with value (identity)(«input_value.x»)
+    # Node 6 («label_1») MATCH 2 with value 2
+    # Node 7 («label_0») MATCH 3 with value 4
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, x) => x
         Foo(_, _) => 2
         _ => 4
@@ -183,25 +256,25 @@ end
 end
 
 @testset "test for sharing where clause conjuncts" begin
-    # State 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: State 18 («label_2»)
-    # State 2 FETCH «input_value.x» := «input_value».x
-    # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == 2 ELSE: State 9 («label_5»)
-    # State 5 FETCH «where_0» := (f1)(«input_value.x»)
-    # State 6 TEST where «where_0» ELSE: State 8 («label_4»)
-    # State 7 MATCH 1 with value 1
-    # State 8 («label_4») TEST «input_value.x» == 1 THEN: State 10 ELSE: State 18 («label_2»)
-    # State 9 («label_5») TEST «input_value.x» == 1 ELSE: State 13 («label_3»)
-    # State 10 FETCH «where_1» := (f2)(«input_value.y»)
-    # State 11 TEST where «where_1» ELSE: State 18 («label_2»)
-    # State 12 MATCH 2 with value 2
-    # State 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
-    # State 14 TEST where «where_0» ELSE: State 18 («label_2»)
-    # State 15 FETCH «where_1» := (f2)(«input_value.y»)
-    # State 16 TEST where «where_1» ELSE: State 18 («label_2»)
-    # State 17 MATCH 3 with value 3
-    # State 18 («label_2») MATCH 4 with value 4
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: Node 18 («label_2»)
+    # Node 2 FETCH «input_value.x» := «input_value».x
+    # Node 3 FETCH «input_value.y» := «input_value».y
+    # Node 4 TEST «input_value.y» == 2 ELSE: Node 9 («label_5»)
+    # Node 5 FETCH «where_0» := (f1)(«input_value.x»)
+    # Node 6 TEST where «where_0» ELSE: Node 8 («label_4»)
+    # Node 7 MATCH 1 with value 1
+    # Node 8 («label_4») TEST «input_value.x» == 1 THEN: Node 10 ELSE: Node 18 («label_2»)
+    # Node 9 («label_5») TEST «input_value.x» == 1 ELSE: Node 13 («label_3»)
+    # Node 10 FETCH «where_1» := (f2)(«input_value.y»)
+    # Node 11 TEST where «where_1» ELSE: Node 18 («label_2»)
+    # Node 12 MATCH 2 with value 2
+    # Node 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
+    # Node 14 TEST where «where_0» ELSE: Node 18 («label_2»)
+    # Node 15 FETCH «where_1» := (f2)(«input_value.y»)
+    # Node 16 TEST where «where_1» ELSE: Node 18 («label_2»)
+    # Node 17 MATCH 3 with value 3
+    # Node 18 («label_2») MATCH 4 with value 4
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, 2) where f1(x)            => 1
         Foo(1, y) where f2(y)            => 2
         Foo(x, y) where (f1(x) && f2(y)) => 3
@@ -210,25 +283,25 @@ end
 end
 
 @testset "test for sharing where clause disjuncts" begin
-    # State 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: State 18 («label_2»)
-    # State 2 FETCH «input_value.x» := «input_value».x
-    # State 3 FETCH «input_value.y» := «input_value».y
-    # State 4 TEST «input_value.y» == 2 ELSE: State 11 («label_3»)
-    # State 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
-    # State 6 TEST !«where_0» ELSE: State 8 («label_5»)
-    # State 7 MATCH 1 with value 1
-    # State 8 («label_4») TEST «input_value.x» == 1 THEN: State 10 ELSE: State 18 («label_2»)
-    # State 9 («label_5») TEST «input_value.x» == 1 ELSE: State 13 («label_3»)
-    # State 10 FETCH «where_1» := (f2)(«input_value.y»)
-    # State 11 TEST where !«where_1» ELSE: State 18 («label_2»)
-    # State 12 MATCH 2 with value 2
-    # State 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
-    # State 14 TEST where !«where_0» ELSE: State 18 («label_2»)
-    # State 15 FETCH «where_1» := (f2)(«input_value.y»)
-    # State 16 TEST where !«where_1» ELSE: State 18 («label_2»)
-    # State 17 MATCH 3 with value 3
-    # State 18 («label_2») MATCH 4 with value 5
-    @test (Rematch2.@match2_count_states some_value begin
+    # Node 1 TEST «input_value» isa Main.Rematch2Tests.Foo ELSE: Node 18 («label_2»)
+    # Node 2 FETCH «input_value.x» := «input_value».x
+    # Node 3 FETCH «input_value.y» := «input_value».y
+    # Node 4 TEST «input_value.y» == 2 ELSE: Node 11 («label_3»)
+    # Node 5 FETCH «where_0» := (f1)((identity)(«input_value.x»))
+    # Node 6 TEST !«where_0» ELSE: Node 8 («label_5»)
+    # Node 7 MATCH 1 with value 1
+    # Node 8 («label_4») TEST «input_value.x» == 1 THEN: Node 10 ELSE: Node 18 («label_2»)
+    # Node 9 («label_5») TEST «input_value.x» == 1 ELSE: Node 13 («label_3»)
+    # Node 10 FETCH «where_1» := (f2)(«input_value.y»)
+    # Node 11 TEST where !«where_1» ELSE: Node 18 («label_2»)
+    # Node 12 MATCH 2 with value 2
+    # Node 13 («label_3») FETCH «where_0» := (f1)(«input_value.x»)
+    # Node 14 TEST where !«where_0» ELSE: Node 18 («label_2»)
+    # Node 15 FETCH «where_1» := (f2)(«input_value.y»)
+    # Node 16 TEST where !«where_1» ELSE: Node 18 («label_2»)
+    # Node 17 MATCH 3 with value 3
+    # Node 18 («label_2») MATCH 4 with value 5
+    @test (Rematch2.@match2_count_nodes some_value begin
         Foo(x, 2) where !f1(x)            => 1
         Foo(1, y) where !f2(y)            => 2
         Foo(x, y) where !(f1(x) || f2(y)) => 3
@@ -238,13 +311,18 @@ end
 
 @testset "exercise the dumping code for coverage" begin
     io = IOBuffer()
-    Rematch2.@match2_dumpall io some_value begin
+    @test (Rematch2.@match2_dumpall io some_value begin
         Foo(x, 2) where !f1(x)            => 1
         Foo(1, y) where !f2(y)            => 2
         Foo(x, y) where !(f1(x) || f2(y)) => 3
         _                                 => 5
-    end
-    @test true
+    end) == 18
+    @test (Rematch2.@match2_dump io some_value begin
+        Foo(x, 2) where !f1(x)            => 1
+        Foo(1, y) where !f2(y)            => 2
+        Foo(x, y) where !(f1(x) || f2(y)) => 3
+        _                                 => 5
+    end) == 18
 end
 
 @testset "test for correct semantics of complex where clauses" begin
@@ -268,7 +346,7 @@ end
             (a, b, c, d, e, f, g, h) where (!(!(a || !b) && (!c || !d)) || !(!(e || !f) && (!g || h))) => 4
             (a, b, c, d, e, f, g, h) where (!(a || !b) && (!c || d) || (e || f) && !(!g || h)) => 5
             _ => 6
-    end
+        end
     end
     function f3(a, b, c, d, e, f, g, h)
         @test f1(a, b, c, d, e, f, g, h) == f2(a, b, c, d, e, f, g, h)
@@ -603,11 +681,13 @@ end
 
     if VERSION >= v"1.8"
         @testset "warn for unreachable cases" begin
-            let line = (@__LINE__) + 4
+            let line = (@__LINE__) + 5
                 @test_warn(
                     "$file:$line: Case 2: `Foo(1, 2) =>` is not reachable.",
-                    # Test macros remove line number nodes, so we can only get the start of it
-                    @eval @match2 Foo(1, 2) begin; Foo(_, _) => 1; Foo(1, 2) => 2; end
+                    @eval @match2 Foo(1, 2) begin
+                        Foo(_, _) => 1
+                        Foo(1, 2) => 2
+                    end
                     )
             end
         end
@@ -629,15 +709,36 @@ end
         end
     end
 
+    if VERSION >= v"1.8"
+        @testset "type constraints on the input are observed" begin
+            let line = (@__LINE__) + 7
+                @test_warn(
+                    "$file:$line: Case 4: `_ =>` is not reachable.",
+                    @eval @match2 identity(BoolPair(true, false))::BoolPair begin
+                        BoolPair(true, _)       => 1
+                        BoolPair(_, true)       => 2
+                        BoolPair(false, false)  => 3
+                        _                       => 4 # unreachable
+                    end
+                    )
+            end
+        end
+    end
 end
 
 @testset "ensure we use `isequal` and not `==`" begin
-    @test (@match2 (-0.0) begin
+    function f(v)
+        @match2 v begin
             0.0    => 1
             1.0    => 4
             -0.0   => 2
             _      => 3
-        end) == 2
+        end
+    end
+    @test f(0.0) == 1
+    @test f(1.0) == 4
+    @test f(-0.0) == 2
+    @test f(2.0) == 3
 end
 
 # Tests inherited from Rematch below
