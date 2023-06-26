@@ -279,7 +279,6 @@ function bind_pattern!(
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
         field_names::Tuple = infer_fieldnames(bound_type, len, match_positionally, location)
-
         for i in 1:len
             pat = subpatterns[i]
             if match_positionally
@@ -467,37 +466,17 @@ end
 #
 function infer_fieldnames(type::Type, len::Int, match_positionally::Bool, location::LineNumberNode)
     members = try
-        fieldnames(type)
+        Rematch2.fieldnames(type)
     catch ex
         error("$(location.file):$(location.line): Could not determine the field names of `$type`.")
     end
 
-    # If we're matching by keyword, we permit the use of any declared fields.
     match_positionally || return members
-
-    # Search for constructor methods that have the correct number of parameters,
-    # no keyword parameters, and are not varargs.
-    meths = Method[methods(type)...]
-    meths = filter(m -> !m.isva && length(Base.kwarg_decl(m))==0, meths)
-    # drop the implicit var"#self#" argument
-    argnames = map(m -> dropfirst(Base.method_argnames(m)), meths)
-    # narrow to arg lists of the correct length where all parameter names correspond to members
-    argnames = unique(filter(l -> length(l) == len && all(n -> n in members, l), argnames))
-
-    if length(argnames) == 1
-        # found a uniquely satisfying order for member names
-        return (argnames[1]...,)
-    elseif len == length(members)
-        # no unique constructor, but the correct number of fields exist; use them
-        return members
-    elseif len > length(members)
+    if len != length(members)
         error("$(location.file):$(location.line): The type `$type` has $(length(members)) fields but the pattern expects $len fields.")
-    else
-        error("$(location.file):$(location.line): Cannot infer which $len of the $(length(members)) fields to match from any positional constructor for `$type`.")
     end
+    return members
 end
-
-dropfirst(a) = a[2:length(a)]
 
 # Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
 # we push negation operators down.  This permits us to share the parts of a where clause

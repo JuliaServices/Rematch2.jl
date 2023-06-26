@@ -81,6 +81,7 @@ struct T207a
     x; y; z
     T207a(x, y) = new(x, y, x)
 end
+Rematch2.fieldnames(::Type{T207a}) = (:x, :y)
 
 struct T207b
     x; y; z
@@ -91,6 +92,7 @@ struct T207c
     x; y; z
 end
 T207c(x, y) = T207c(x, y, x)
+Rematch2.fieldnames(::Type{T207c}) = (:x, :y)
 
 @enum Color Yellow Green Blue
 
@@ -102,7 +104,9 @@ macro casearm2(pattern, value)
     esc(:(@casearm1 $pattern $value))
 end
 
-@testset "@rematch2 tests 2" begin
+file = Symbol(@__FILE__)
+
+@testset "@rematch2 tests" begin
 
 @testset "Assignments in the value DO leak out (when not using `let``)" begin
     @match2 Foo(1, 2) begin
@@ -322,11 +326,12 @@ end
     end) == 18
 end
 
-@testset "infer positional parameters from constructors 1" begin
+@testset "use Rematch2.fieldnames to identify fields 1" begin
     # struct T207a
     #     x; y; z
     #     T207a(x, y) = new(x, y, x)
     # end
+    # Rematch2.fieldnames(::Type{T207a}) = (:x, :y)
     r = @match2 T207a(1, 2) begin
         T207a(x, y) => x
     end
@@ -337,7 +342,7 @@ end
     @test r == 2
 end
 
-@testset "infer positional parameters from constructors 2" begin
+@testset "use Rematch2.fieldnames to identify fields 2" begin
     # struct T207b
     #     x; y; z
     #     T207b(x, y; z = x) = new(x, y, z)
@@ -353,16 +358,17 @@ end
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: Cannot infer which 2 of the 3 fields to match from any positional constructor for `$T207b`."
+            @test e.msg == "$file:$line: The type `$T207b` has 3 fields but the pattern expects 2 fields."
         end
     end
 end
 
-@testset "infer positional parameters from constructors 3" begin
+@testset "use Rematch2.fieldnames to identify fields 3" begin
     # struct T207c
     #     x; y; z
     # end
     # T207c(x, y) = T207c(x, y, x)
+    # Rematch2.fieldnames(::Type{T207c}) = (:x, :y)
     r = @match2 T207c(1, 2) begin
         T207c(x, y) => x
     end

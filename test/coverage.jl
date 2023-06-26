@@ -1,6 +1,6 @@
 #
 # Additional tests to improve node coverage.
-# These tests mainly exercise diagnostic node that isn't crucial to the
+# These tests mainly exercise diagnostic code that isn't crucial to the
 # normal operation of the package.
 #
 
@@ -14,6 +14,16 @@ struct Trash <: Rematch2.BoundFetchPattern
 end
 
 const T = 12
+
+struct MyPair
+    x
+    y
+end
+Rematch2.fieldnames(::Type{MyPair}) = error("May not @match MyPair")
+
+macro match_case(pattern, value)
+    return esc(:($pattern => $value))
+end
 
 expected="""
 Decision Automaton: (57 nodes) input «input_value»
@@ -345,7 +355,7 @@ Node 57
     FAIL (throw)((Rematch2.MatchFailure)(«input_value»))
 end # of automaton
 """
-@testset "Tests for more coverage" begin
+@testset "Tests for node coverage" begin
     devnull = IOBuffer()
     Rematch2.@match2_dumpall devnull e begin
         1                            => 1
@@ -366,27 +376,30 @@ end # of automaton
         @test a == e
     end
 
-    devnull = IOBuffer()
-    Rematch2.@match2_dumpall devnull some_value begin
-        Foo(x, 2) where !f1(x)            => 1
-        Foo(1, y) where !f2(y)            => 2
-        Foo(x, y) where !(f1(x) || f2(y)) => 3
-        _                                 => 5
+    @testset "exercise dumpall 2" begin
+        devnull = IOBuffer()
+        Rematch2.@match2_dumpall devnull some_value begin
+            Foo(x, 2) where !f1(x)            => 1
+            Foo(1, y) where !f2(y)            => 2
+            Foo(x, y) where !(f1(x) || f2(y)) => 3
+            _                                 => 5
+        end
+        Rematch2.@match2_dump devnull some_value begin
+            Foo(x, 2) where !f1(x)            => 1
+            Foo(1, y) where !f2(y)            => 2
+            Foo(x, y) where !(f1(x) || f2(y)) => 3
+            _                                 => 5
+        end
     end
-    Rematch2.@match2_dump devnull some_value begin
-        Foo(x, 2) where !f1(x)            => 1
-        Foo(1, y) where !f2(y)            => 2
-        Foo(x, y) where !(f1(x) || f2(y)) => 3
-        _                                 => 5
+
+    @testset "trigger some normally unreachable code" begin
+        @test_throws ErrorException Rematch2.gentemp(:a)
+
+        trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
+        binder = Rematch2.BinderContext(@__MODULE__)
+        @test_throws ErrorException Rematch2.code(trash)
+        @test_throws ErrorException Rematch2.code(trash, binder)
     end
-    devnull = nothing
-
-    @test_throws ErrorException Rematch2.gentemp(:a)
-
-    trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
-    binder = Rematch2.BinderContext(@__MODULE__)
-    @test_throws ErrorException Rematch2.code(trash)
-    @test_throws ErrorException Rematch2.code(trash, binder)
 
     function f300(x::T) where { T }
         # The implementation of @match can't bind `T` below - it finds the non-type `T`
@@ -396,4 +409,31 @@ end # of automaton
         end
     end
     @test f300(1) == 1
-end
+
+    @testset "Rematch2.fieldnames(...) throwing" begin
+        let line = 0, file = @__FILE__
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 MyPair(1, 2) begin
+                    MyPair(1, 2) => 3
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Could not determine the field names of `$MyPair`."
+            end
+        end
+    end
+
+    @testset "A macro that expands to a match case" begin
+        # macro match_case(pattern, value)
+        #     return esc(:(x => value))
+        # end
+        @test (@match2 :x begin
+            @match_case pattern 1
+        end) == 1
+    end
+
+end # @testset "Tests that add code coverage"
