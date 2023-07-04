@@ -510,23 +510,30 @@ end
 
 #
 # Replace each pattern variable reference with the temporary variable holding the
-# value that corresponds to that pattern variable.
+# value that corresponds to that pattern variable.  At one time we did this by rewriting,
+# but that has some unfortunate side effects.  Instead, we now do this by enclosing the
+# user expression in a let-expression that assigns to the pattern variable names.
 #
 function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
-    new_assigned = ImmutableDict{Symbol, Symbol}()
-    new_expr = MacroTools.postwalk(expr) do patvar
-        if patvar isa Symbol
-            tmpvar = get(assigned, patvar, nothing)
-            if tmpvar isa Symbol
-                if !haskey(new_assigned, patvar)
-                    new_assigned = ImmutableDict{Symbol, Symbol}(
-                        new_assigned, patvar, tmpvar)
-                end
-                # Prevent the variable from being assigned to in user code
-                return Expr(:block, tmpvar)
-            end
-        end
+    # determine the variables *actually* used in the expression
+    used = Set{Symbol}()
+    MacroTools.postwalk(expr) do patvar
+        patvar isa Symbol && push!(used, patvar)
         patvar
     end
-    (new_expr, new_assigned)
+
+    # we sort the used variables by name so that we have a deterministic order
+    # that will make it more likely we can share the resulting expression.
+    used = sort(collect(intersect(keys(assigned), used)))
+
+    assignments = Expr(:block)
+    new_assigned = ImmutableDict{Symbol, Symbol}()
+    for v in used
+        tmp = get(assigned, v, nothing)
+        @assert tmp !== nothing
+        push!(assignments.args, Expr(:(=), v, tmp))
+        new_assigned = ImmutableDict(new_assigned, v => tmp)
+    end
+    new_expr = Expr(:let, assignments, expr)
+    return new_expr, new_assigned
 end

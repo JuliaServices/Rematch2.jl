@@ -553,7 +553,7 @@ end
             # complex expressions
             [$(a+b+c), out] => out
             # splatting existing values
-            [fronts..., $(arr...), back] => [fronts...,back]
+            [fronts..., $(arr...), back] => [fronts...,back] # problematic???
         end
     end
     # scalars
