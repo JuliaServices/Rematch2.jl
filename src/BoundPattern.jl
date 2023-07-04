@@ -53,9 +53,6 @@ end
 # The stored `value` has had substitutions (recorded in `assigned`) applied
 # by the caller, so that semantically equivalent tests might be syntactically
 # equivalent.
-# The stored `value` has had substitutions (recorded in `assigned`) applied
-# by the caller, so that semantically equivalent tests might be syntactically
-# equivalent.
 struct BoundEqualValueTestPattern <: BoundTestPattern
     location::LineNumberNode
     source::Any
