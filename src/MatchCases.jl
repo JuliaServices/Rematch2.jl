@@ -1,8 +1,7 @@
 struct MatchCaseResult
     location::LineNumberNode
     matched_expression::Any
-    assigned::ImmutableDict{Symbol, Symbol}
-    result_expression::Any
+    result_expression::BoundExpression
 end
 
 function handle_match_case(
@@ -20,8 +19,8 @@ function handle_match_case(
         location, pattern, input_variable, binder, assigned)
     matched = lower_pattern_to_boolean(bound_pattern, binder)
 
-    result0, assigned0 = subst_patvars(result, assigned)
-    return MatchCaseResult(location, matched, assigned0, result0)
+    result_expression = bind_expression(location, result, assigned)
+    return MatchCaseResult(location, matched, result_expression)
 end
 
 function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
@@ -47,7 +46,7 @@ function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
     tail = :($throw($MatchFailure($input_variable)))
     n = length(cases)
     for (i, case) in enumerate(reverse(cases))
-        eval = Expr(:block, case.location, case.result_expression)
+        eval = Expr(:block, case.location, code(case.result_expression))
         tail = Expr(i == n ? :if : :elseif, case.matched_expression, eval, tail)
     end
     result = Expr(:block, binder.assertions..., :($input_variable = $value), tail)

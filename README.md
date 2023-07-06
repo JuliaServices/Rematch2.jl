@@ -101,16 +101,6 @@ julia> x
 end
 ```
 
-or, if you want it to have its own scope (like `Rematch` did)
-
-``` julia
-@match2 value let
-    pattern1 => result1
-    pattern2 => result2
-    ...
-end
-```
-
 Returns `result` for the first matching pattern. If there are no matching patterns, throws `MatchFailure`.
 
 Note that unlike the _assignment syntax_, this does not create any variable bindings outside the match macro.
@@ -142,7 +132,7 @@ Repeated variables only match if they are equal (`==`). For example `(x,x)` matc
 Inside the result part of a case, you can cause the pattern to fail (as if the pattern does not match), or you can return a value early:
 
 ```julia
-@match2 value let
+@match2 value begin
     pattern1 => begin
         if some_failure_condition
             @match_fail
@@ -187,7 +177,4 @@ If we make this a new revision of `Rematch`, only `@match` will be supported.
 * Previously bound variables may now be used in interpolations, ie `@match2 (x, $(x+2)) = (1, 3)` is a match.
 * A pure type match (without another pattern) can be written as `::Type`.
 * Types appearing in type patterns (`::Type`) and struct patterns (`Type(...)`) are bound at macro-expansion time in the context of the module containing the macro usage.  As a consequence, you cannot use certain type expressions that would differ.  For example, you cannot use a type parameter or a local variable containing a type.  The generated code checks that the type is the same at evaluation time as it was at macro expansion time, and an error is thrown if they differ.  If this rare incompatibility affects you, you can use `x where x isa Type` as a workaround.  If the type is not defined at macro-expansion time, an error is issued.
-* Variables assigned in a `where` clause may be used later, e.g. in the result of a case.
-* Variables assigned in the result of a case may be used outside the `@match2` expression.
-* To hide assignments in `@match2` cases, you can use `let ... end` around the cases instead of `begin ... end`.
 * A warning is issued at macro-expansion time if a case cannot be reached because it is subsumed by prior cases.

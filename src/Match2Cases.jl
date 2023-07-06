@@ -5,6 +5,7 @@ function bind_case(
     case_number::Int,
     location::LineNumberNode,
     case,
+    predeclared_temps,
     binder::BinderContext)::CasePartialResult
     while case isa Expr && case.head == :macrocall
         # expand top-level macros only
@@ -15,11 +16,11 @@ function bind_case(
         error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
     pattern = case.args[2]
     result = case.args[3]
-    (pattern, result) = adjust_case_for_return_macro(binder.mod, pattern, result)
+    (pattern, result) = adjust_case_for_return_macro(binder.mod, location, pattern, result, predeclared_temps)
     bound_pattern, assigned = bind_pattern!(
         location, pattern, binder.input_variable, binder, ImmutableDict{Symbol, Symbol}())
-    result0, assigned0 = subst_patvars(result, assigned)
-    return CasePartialResult(case_number, location, pattern, bound_pattern, assigned0, result0)
+    result_expression = bind_expression(location, result, assigned)
+    return CasePartialResult(case_number, location, pattern, bound_pattern, result_expression)
 end
 
 #
@@ -29,13 +30,14 @@ function build_automaton_core(
     value,
     source_cases::Vector{Any},
     location::LineNumberNode,
+    predeclared_temps,
     binder::BinderContext)::AutomatonNode
     cases = CasePartialResult[]
     for case in source_cases
         if case isa LineNumberNode
             location = case
         else
-            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, binder)
+            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, predeclared_temps, binder)
             bound_case = simplify(bound_case, binder)
             push!(cases, bound_case)
         end
@@ -120,11 +122,11 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospe
         action = node.action
         if action isa CasePartialResult
             # We've matched a pattern.
-            push!(emit, action.location)
-            push!(emit, :($result_variable = $(action.result_expression)))
+            push!(emit, loc(action))
+            push!(emit, :($result_variable = $(code(action.result_expression))))
             push!(emit, :(@goto $result_label))
         elseif action isa BoundFetchPattern
-            push!(emit, action.location)
+            push!(emit, loc(action))
             push!(emit, code(action, binder))
             (next::DeduplicatedAutomatonNode,) = node.next
             if last(togen) != next
@@ -134,7 +136,7 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospe
                 push!(emit, :(@goto $(label!(next))))
             end
         elseif action isa BoundTestPattern
-            push!(emit, action.location)
+            push!(emit, loc(action))
             next_true, next_false = node.next
             push!(emit, :($(code(action, binder)) || @goto $(label!(next_false))))
             if last(togen) != next_true
@@ -163,15 +165,14 @@ function build_automaton(location::LineNumberNode, mod::Module, @nospecialize(va
     end
     if body isa Expr && body.head == :block
         source_cases = body.args
-    elseif body isa Expr && body.head == :let && body.args[2] isa Expr && body.args[2].head == :block
-        source_cases = body.args[2].args
     else
         error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$body`.")
     end
 
     binder = BinderContext(mod)
-    entry = build_automaton_core(value, source_cases, location, binder)
-    return (entry, binder)
+    predeclared_temps = Any[]
+    entry = build_automaton_core(value, source_cases, location, predeclared_temps, binder)
+    return entry, predeclared_temps, binder
 end
 
 #
@@ -179,9 +180,9 @@ end
 # optimize it, and return the resulting set of nodes along with the binder.
 #
 function build_deduplicated_automaton(location::LineNumberNode, mod::Module, value, body)
-    entry, binder = build_automaton(location::LineNumberNode, mod::Module, value, body)
+    entry, predeclared_temps, binder = build_automaton(location::LineNumberNode, mod::Module, value, body)
     top_down_nodes = deduplicate_automaton(entry, binder)
-    return (top_down_nodes, binder)
+    return top_down_nodes, predeclared_temps, binder
 end
 
 #
@@ -282,7 +283,7 @@ function remove(action::BoundFetchPattern, node::AutomatonNode, binder::BinderCo
     bound_type = action.type
     if bound_type !== Any
         temp = get_temp(binder, action)
-        filter = BoundTypeTestPattern(action.location, action.source, temp, bound_type)
+        filter = BoundTypeTestPattern(loc(action), source(action), temp, bound_type)
         succ = remove(filter, true, succ, binder)
     end
     succ
@@ -305,61 +306,61 @@ end
 remove(action::BoundFetchPattern, pattern::BoundPattern, binder::BinderContext)::BoundPattern = pattern
 remove(action::BoundTestPattern, action_result::Bool, pattern::BoundPattern, binder::BinderContext)::BoundPattern = pattern
 function remove(action::BoundFetchPattern, pattern::BoundFetchPattern, binder::BinderContext)::BoundPattern
-    return (action == pattern) ? BoundTruePattern(pattern.location, pattern.source) : pattern
+    return (action == pattern) ? BoundTruePattern(loc(pattern), source(pattern)) : pattern
 end
 function remove(action::BoundFetchPattern, pattern::Union{BoundAndPattern,BoundOrPattern}, binder::BinderContext)::BoundPattern
     subpatterns = collect(BoundPattern, map(p -> remove(action, p, binder), pattern.subpatterns))
-    return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
+    return (typeof(pattern))(loc(pattern), source(pattern), subpatterns)
 end
 function remove(action::BoundTestPattern, action_result::Bool, pattern::BoundTestPattern, binder::BinderContext)::BoundPattern
-    return (action == pattern) ? BoundBoolPattern(pattern.location, pattern.source, action_result) : pattern
+    return (action == pattern) ? BoundBoolPattern(loc(pattern), source(pattern), action_result) : pattern
 end
 function remove(action::BoundEqualValueTestPattern, action_result::Bool, pattern::BoundEqualValueTestPattern, binder::BinderContext)::BoundPattern
     if action.input != pattern.input
         return pattern
     end
-    if isequal(action.value, pattern.value)
-        return BoundBoolPattern(pattern.location, pattern.source, action_result)
+    if isequal(action.bound_expression, pattern.bound_expression)
+        return BoundBoolPattern(loc(pattern), source(pattern), action_result)
     end
 
     # As a special case, if the input variable is of type Bool, then we know that true and false
     # are the only values it can hold.
     type = get!(() -> Any, binder.types, action.input)
-    if type == Bool && action.value isa Bool && pattern.value isa Bool
-        @assert action.value != pattern.value # because we already checked for equality
+    if type == Bool && action.bound_expression.source isa Bool && pattern.bound_expression.source isa Bool
+        @assert action.bound_expression.source != pattern.bound_expression.source # because we already checked for equality
         # If the one succeeded, then the other one fails
-        return BoundBoolPattern(pattern.location, pattern.source, !action_result)
+        return BoundBoolPattern(loc(pattern), source(pattern), !action_result)
     end
 
     return pattern
 end
 function remove(action::BoundTestPattern, action_result::Bool, pattern::Union{BoundAndPattern,BoundOrPattern}, binder::BinderContext)::BoundPattern
     subpatterns = collect(BoundPattern, map(p -> remove(action, action_result, p, binder), pattern.subpatterns))
-    return (typeof(pattern))(pattern.location, pattern.source, subpatterns)
+    return (typeof(pattern))(loc(pattern), source(pattern), subpatterns)
 end
 function remove(action::BoundWhereTestPattern, action_result::Bool, pattern::BoundWhereTestPattern, binder::BinderContext)::BoundPattern
     # Two where tests can be related by being the inverse of each other.
     action.input == pattern.input || return pattern
     replacement_value = (action.inverted == pattern.inverted) == action_result
-    return BoundBoolPattern(pattern.location, pattern.source, replacement_value)
+    return BoundBoolPattern(loc(pattern), source(pattern), replacement_value)
 end
 function remove(action::BoundTypeTestPattern, action_result::Bool, pattern::BoundTypeTestPattern, binder::BinderContext)::BoundPattern
     # Knowing the result of one type test can give information about another.  For
     # example, if you know `x` is a `String`, then you know that it isn't an `Int`.
     if (action == pattern)
-        return BoundBoolPattern(pattern.location, pattern.source, action_result)
+        return BoundBoolPattern(loc(pattern), source(pattern), action_result)
     elseif action.input != pattern.input
         return pattern
     elseif action_result
         # the type test succeeded.
         if action.type <: pattern.type
-            return BoundTruePattern(pattern.location, pattern.source)
+            return BoundTruePattern(loc(pattern), source(pattern))
         elseif pattern.type <: action.type
             # we are asking about a narrower type - result unknown
             return pattern
         elseif typeintersect(pattern.type, action.type) == Base.Bottom
             # their intersection is empty, so it cannot be pattern.type
-            return BoundFalsePattern(pattern.location, pattern.source)
+            return BoundFalsePattern(loc(pattern), source(pattern))
         else
             return pattern
         end
@@ -370,7 +371,7 @@ function remove(action::BoundTypeTestPattern, action_result::Bool, pattern::Boun
             return pattern
         elseif pattern.type <: action.type
             # if it wasn't the wider type, then it won't be the narrower type
-            return BoundFalsePattern(pattern.location, pattern.source)
+            return BoundFalsePattern(loc(pattern), source(pattern))
         else
             return pattern
         end
@@ -381,7 +382,7 @@ end
 # Simplify a case by removing fetch operations whose results are not used.
 #
 function simplify(case::CasePartialResult, binder::BinderContext)::CasePartialResult
-    required_temps = Set(values(case.assigned))
+    required_temps = Set(values(case.result_expression.assignments))
     simplified_pattern = simplify(case.pattern, required_temps, binder)
     return with_pattern(case, simplified_pattern)
 end
@@ -403,24 +404,24 @@ function simplify(pattern::BoundFetchPattern, required_temps::Set{Symbol}, binde
         push!(required_temps, pattern.input)
         pattern
     else
-        BoundTruePattern(pattern.location, pattern.source)
+        BoundTruePattern(loc(pattern), source(pattern))
     end
 end
 function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     temp = get_temp(binder, pattern)
     if temp in required_temps
         pop!(required_temps, temp)
-        for (v, t) in pattern.assigned
+        for (v, t) in pattern.bound_expression.assignments
             push!(required_temps, t)
         end
         pattern
     else
-        BoundTruePattern(pattern.location, pattern.source)
+        BoundTruePattern(loc(pattern), source(pattern))
     end
 end
 function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     push!(required_temps, pattern.input)
-    for (v, t) in pattern.assigned
+    for (v, t) in pattern.bound_expression.assignments
         push!(required_temps, t)
     end
     pattern
@@ -430,7 +431,7 @@ function simplify(pattern::BoundAndPattern, required_temps::Set{Symbol}, binder:
     for p in reverse(pattern.subpatterns)
         push!(subpatterns, simplify(p, required_temps, binder))
     end
-    BoundAndPattern(pattern.location, pattern.source, BoundPattern[reverse(subpatterns)...])
+    BoundAndPattern(loc(pattern), source(pattern), BoundPattern[reverse(subpatterns)...])
 end
 function simplify(pattern::BoundOrPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     subpatterns = BoundPattern[]
@@ -442,7 +443,7 @@ function simplify(pattern::BoundOrPattern, required_temps::Set{Symbol}, binder::
     end
     empty!(required_temps)
     union!(required_temps, new_required_temps)
-    BoundOrPattern(pattern.location, pattern.source, BoundPattern[reverse(subpatterns)...])
+    BoundOrPattern(loc(pattern), source(pattern), BoundPattern[reverse(subpatterns)...])
 end
 
 #
@@ -452,7 +453,7 @@ end
 # Return the count of the number of nodes that would be generated by the match,
 # but otherwise does not generate any code for the match.
 macro match2_count_nodes(value, body)
-    top_down_nodes, binder = build_deduplicated_automaton(__source__, __module__, value, body)
+    top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(__source__, __module__, value, body)
     length(top_down_nodes)
 end
 
@@ -474,12 +475,12 @@ macro match2_dumpall(value, body)
 end
 
 function handle_match2_dump(__source__, __module__, io, value, body)
-    top_down_nodes, binder = build_deduplicated_automaton(__source__, __module__, value, body)
+    top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(__source__, __module__, value, body)
     esc(:($dumpall($io, $top_down_nodes, $binder, false)))
 end
 
 function handle_match2_dump_verbose(__source__, __module__, io, value, body)
-    entry, binder = build_automaton(__source__, __module__, value, body)
+    entry, predeclared_temps, binder = build_automaton(__source__, __module__, value, body)
     top_down_nodes = reachable_nodes(entry)
 
     esc(quote
@@ -494,10 +495,8 @@ end
 # Implementation of `@match2 value begin ... end`
 #
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
-    top_down_nodes, binder = build_deduplicated_automaton(location, mod, value, body)
+    top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(location, mod, value, body)
     result = generate_code(top_down_nodes, value, location, binder)
-    if body.head == :let
-        result = Expr(:let, body.args[1], result)
-    end
+    result = Expr(:let, Expr(:block, predeclared_temps...), result)
     esc(result)
 end

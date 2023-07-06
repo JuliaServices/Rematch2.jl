@@ -27,12 +27,8 @@ struct CasePartialResult
     # simply `true`, it has matched.
     pattern::BoundPattern
 
-    # The set of user variables to assign when the match succeeds;
-    # they might be used in the result expression.
-    assigned::ImmutableDict{Symbol, Symbol}
-
     # The user's result expression for this case.
-    result_expression::Any
+    result_expression::BoundExpression
 
     _cached_hash::UInt64
     function CasePartialResult(
@@ -40,10 +36,9 @@ struct CasePartialResult
         location::LineNumberNode,
         pattern_source,
         pattern::BoundPattern,
-        assigned::ImmutableDict{Symbol, Symbol},
-        result_expression::Any)
-        _hash = hash((case_number, pattern, assigned), 0x1cdd9657bfb1e645)
-        new(case_number, location, pattern_source, pattern, assigned, result_expression, _hash)
+        result_expression::BoundExpression)
+        _hash = hash((case_number, pattern, result_expression), 0x1cdd9657bfb1e645)
+        new(case_number, location, pattern_source, pattern, result_expression, _hash)
     end
 end
 function with_pattern(
@@ -54,7 +49,6 @@ function with_pattern(
         case.location,
         case.pattern_source,
         new_pattern,
-        case.assigned,
         case.result_expression)
 end
 function Base.hash(case::CasePartialResult, h::UInt64)
@@ -65,7 +59,7 @@ function Base.:(==)(a::CasePartialResult, b::CasePartialResult)
     a._cached_hash == b._cached_hash &&
     isequal(a.case_number, b.case_number) &&
         isequal(a.pattern, b.pattern) &&
-        isequal(a.assigned, b.assigned)
+        isequal(a.result_expression, b.result_expression)
 end
 function pretty(io::IO, case::CasePartialResult, binder::BinderContext)
     print(io, case.case_number, ": ")
@@ -74,6 +68,7 @@ function pretty(io::IO, case::CasePartialResult, binder::BinderContext)
     pretty(io, case.result_expression)
     println(io)
 end
+loc(case::CasePartialResult) = case.location
 
 abstract type AbstractAutomatonNode end
 

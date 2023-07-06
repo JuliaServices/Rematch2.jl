@@ -6,7 +6,24 @@
 
 file = Symbol(@__FILE__)
 
-@testset "@rematch2 tests 1" begin
+@enum Color Yellow Green Blue
+
+macro casearm1(pattern, value)
+    esc(:($pattern => $value))
+end
+
+macro casearm2(pattern, value)
+    esc(:(@casearm1 $pattern $value))
+end
+
+macro check_is_identifier(x)
+    false
+end
+macro check_is_identifier(x::Symbol)
+    true
+end
+
+@testset "@rematch2 tests" begin
 
 @testset "Check that `where` clauses are reparsed properly 1" begin
     x = true
@@ -75,107 +92,26 @@ end
     end
 end
 
-end
-
-@enum Color Yellow Green Blue
-
-macro casearm1(pattern, value)
-    esc(:($pattern => $value))
-end
-
-macro casearm2(pattern, value)
-    esc(:(@casearm1 $pattern $value))
-end
-
-file = Symbol(@__FILE__)
-
-@testset "@rematch2 tests" begin
-
-@testset "Assignments in the value DO leak out (when not using `let``)" begin
+@testset "Assignments in the value do not leak out" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) => begin
             new_variable = 3
         end
     end
     @test !(@isdefined x)
-    @test new_variable == 3
-end
-
-@testset "Assignments in the value do NOT leak out if you use `let`" begin
-    @match2 Foo(1, 2) begin
-        Foo(x, 2) => let
-            new_variable = 3
-        end
-    end
-    @test !(@isdefined x)
     @test !(@isdefined new_variable)
 end
 
-@testset "Assignments in the value do NOT leak out if you use `let`" begin
-    @match2 Foo(1, 2) begin
-        Foo(x, 3) => let # this match does not leak assigmments
-            new_variable = 3
-        end
-        Foo(x, 2) => begin # this match does leak assignments
-            new_variable = 4
-        end
-    end
-    @test !(@isdefined x)
-    @test new_variable == 4
-end
-
-@testset "Assignments in a where clause DO leak out (when not using `let`)" begin
+@testset "Assignments in a where clause do not leak out" begin
     @match2 Foo(1, 2) begin
         Foo(x, 2) where begin
             new_variable = 3
             true
-        end => new_variable
-    end
-    @test !(@isdefined x)
-    @test new_variable == 3
-end
-
-@testset "Assignments in a where clause do NOT leak with let" begin
-    @match2 Foo(1, 2) begin
-        Foo(x, 2) where let
-            new_variable = 3
-            true
-        end => 13
-    end
-    @test !(@isdefined x)
-    @test !(@isdefined new_variable)
-end
-
-@testset "Assignments in the value do NOT leak out if you use `let`" begin
-    @match2 Foo(1, 2) let
-        Foo(x, 2) => begin
-            new_variable = 3
+        end => begin
+            @test !(@isdefined new_variable)
         end
     end
     @test !(@isdefined x)
-    @test !(@isdefined new_variable)
-end
-
-@testset "Assignments in a where clause only leak as far as the rule's consequence if you use `let`" begin
-    @match2 Foo(1, 2) let
-        Foo(x, 2) where begin
-            new_variable = 3
-            true
-        end => new_variable
-    end
-    @test !(@isdefined x)
-    @test !(@isdefined new_variable)
-end
-
-@testset "If you use `let` around the match block, the `let` variables are in scope locally only" begin
-    @match2 Foo(1, 2) let a=3
-        Foo(x, 2) where begin
-            new_variable = a
-            true
-        end => new_variable
-    end
-    @test !(@isdefined x)
-    @test !(@isdefined a)
     @test !(@isdefined new_variable)
 end
 
@@ -372,27 +308,6 @@ end
     @test r == 2
 end
 
-@testset "infer positional parameters from Rematch2.fieldnames(T) 2" begin
-    # struct T207b
-    #     x; y; z
-    #     T207b(x, y; z = x) = new(x, y, z)
-    # end
-    let line = 0
-        try
-            line = (@__LINE__) + 2
-            @eval @match2 T207b(1, 2) begin
-                T207b(x, y) => 1
-            end
-            @test false
-        catch ex
-            @test ex isa LoadError
-            e = ex.error
-            @test e isa ErrorException
-            @test e.msg == "$file:$line: The type `$T207b` has 3 fields but the pattern expects 2 fields."
-        end
-    end
-end
-
 @testset "infer positional parameters from Rematch2.fieldnames(T) 3" begin
     # struct T207c
     #     x; y; z
@@ -426,6 +341,27 @@ end
 end
 
 @testset "diagnostics produced are excellent" begin
+
+    @testset "infer positional parameters from Rematch2.fieldnames(T) 2" begin
+        # struct T207b
+        #     x; y; z
+        #     T207b(x, y; z = x) = new(x, y, z)
+        # end
+        let line = 0
+            try
+                line = (@__LINE__) + 2
+                @eval @match2 T207b(1, 2) begin
+                    T207b(x, y) => 1
+                end
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: The type `$T207b` has 3 fields but the pattern expects 2 fields."
+            end
+        end
+    end
 
     @testset "stack trace for MatchFailure" begin
         let line = 0
@@ -693,20 +629,20 @@ end
         end
     end
 
-    @testset "assignment to pattern variables not permitted" begin
-        let line = 0
-            try
-                line = (@__LINE__) + 2
-                @eval @match2 1 begin
-                    x => (x = 4)
-                end
-                @test false
-            catch e
-                @test e isa ErrorException
-                @test startswith(e.msg, "syntax: invalid assignment location")
-                @test endswith(e.msg, "around $file:$line")
+    @testset "assignment to pattern variables are permitted but act locally" begin
+        @test (@match2 1 begin
+            x where begin
+                @test x == 1
+                x = 12
+                @test x == 12
+                true
+            end => begin
+                @test x == 1
+                x = 13
+                @test x == 13
+                6
             end
-        end
+        end) == 6
     end
 
     if VERSION >= v"1.8"
@@ -724,6 +660,87 @@ end
             end
         end
     end
+
+    @testset "splatting interpolation is not supported" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 4
+                Base.eval(@__MODULE__, @no_escape_quote begin
+                    interp_values = [1, 2]
+                    f(a) = @match2 a begin
+                        [0, $(interp_values...), 3] => 1
+                    end
+                end)
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Splatting not supported in interpolation: `interp_values...`."
+            end
+        end
+    end
+
+    @testset "pattern variables are simple identifiers in a closed scope" begin
+        @match2 collect(1:5) begin
+            [x, y..., z] => begin
+                @test @check_is_identifier(x)
+                @test @check_is_identifier(y)
+                @test @check_is_identifier(z)
+                # test that pattern variable names are preserved in the code
+                @test string(:(x + z)) == "x + z"
+                @test x == 1
+                @test y == [2, 3, 4]
+                @test z == 5
+                x = 3
+                @test x == 3
+                q = 12
+            end
+        end
+        @test !(@isdefined x)
+        @test !(@isdefined y)
+        @test !(@isdefined z)
+        @test !(@isdefined q)
+    end
+
+    @testset "pattern variable names can be shadowed" begin
+        @match2 collect(1:5) begin
+            [x, y..., z] => begin
+                f(x) = x + 1
+                @test f(x) == 2
+                @test f(z) == 6
+                @test x == 1
+            end
+        end
+        @test !(@isdefined x)
+    end
+
+    @testset "pattern variable names can be assigned (locally)" begin
+        z = "something"
+        q = "other"
+        @test (@match2 collect(1:5) begin
+            [x, y..., z] where begin
+                @test x == 1
+                @test z == 5
+                x = 55
+                y = 2
+                z = 100
+                @test x == 55
+                q = "changed"
+                true
+            end=> begin
+                @test x == 1
+                @test z == 5
+                @test @isdefined y
+                x + z
+            end
+        end) == 6
+        @test !(@isdefined x)
+        @test !(@isdefined y)
+        @test z == "something"
+        @test q == "changed"
+    end
+
 end
 
 @testset "ensure we use `isequal` and not `==`" begin
@@ -1006,8 +1023,8 @@ end
             [fronts..., $tup, back] => [fronts...,back]
             # complex expressions
             [$(a+b+c), out] => out
-            # splatting existing values
-            [fronts..., $(arr...), back] => [fronts...,back]
+            # splatting existing values not supported
+            # [fronts..., $(arr...), back] => [fronts...,back]
         end
     end
     # scalars
@@ -1018,8 +1035,8 @@ end
     @test test_interp_pattern([0,1, (100,200,300), 2]) == [0,1,2]
     # complex expressions
     @test test_interp_pattern([6,1]) == 1
-    # TODO: splatting existing values into pattern isn't suported yet.
-    @test_broken test_interp_pattern([0,1, 10,20,30, 2]) == [0,1,2]
+    # TODO: splatting existing values into pattern isn't suported
+    # @test_broken test_interp_pattern([0,1, 10,20,30, 2]) == [0,1,2]
 end
 
 # # --- tests from Match.jl ---

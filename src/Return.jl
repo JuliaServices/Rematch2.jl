@@ -75,7 +75,7 @@ end
 # match failed.  Therefore, don't use the @match_fail and @match_return macros for cases
 # in which `MatchFailure` is a possible result.
 #
-function adjust_case_for_return_macro(__module__, pattern, result)
+function adjust_case_for_return_macro(__module__, location, pattern, result, predeclared_temps)
     value = gensym("value")
     label = gensym("label")
     found_early_exit::Bool = false
@@ -104,7 +104,10 @@ function adjust_case_for_return_macro(__module__, pattern, result)
 
     rewritten_result = MacroTools.prewalk(adjust_top, result)
     if found_early_exit
-        where_expr = Expr(:block, :($value = $rewritten_result), :(@label $label), :($value !== $MatchFailure))
+        # Since we found an early exit, we need to predeclare the temp to ensure
+        # it is in scope both for where it is written and in the constructed where clause.
+        push!(predeclared_temps, value)
+        where_expr = Expr(:block, location, :($value = $rewritten_result), :(@label $label), :($value !== $MatchFailure))
         new_pattern = :($pattern where $where_expr)
         new_result = value
         (new_pattern, new_result)

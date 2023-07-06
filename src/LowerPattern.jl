@@ -7,7 +7,7 @@ end
 # return the code needed for a pattern.
 code(bound_pattern::BoundTruePattern, binder::BinderContext) = true
 function code(bound_pattern::BoundEqualValueTestPattern, binder::BinderContext)
-    :($isequal($(bound_pattern.input), $(bound_pattern.value)))
+    :($isequal($(bound_pattern.input), $(code(bound_pattern.bound_expression))))
 end
 function code(bound_pattern::BoundRelationalTestPattern, binder::BinderContext)
     @assert bound_pattern.relation == :>=
@@ -47,7 +47,7 @@ function code(bound_pattern::BoundFetchPattern, binder::BinderContext)
 end
 
 function code(bound_pattern::BoundFetchPattern)
-    location = bound_pattern.location
+    location = loc(bound_pattern)
     error("$(location.file):$(location.line): Internal error in Rematch2: `code(::$(typeof(bound_pattern)))` not implemented.")
 end
 function code(bound_pattern::BoundFetchFieldPattern)
@@ -68,17 +68,17 @@ function code(bound_pattern::BoundFetchLengthPattern)
     :($length($(bound_pattern.input)))
 end
 function code(bound_pattern::BoundFetchExpressionPattern)
-    bound_pattern.value
+    code(bound_pattern.bound_expression)
 end
 
 # Return an expression that computes whether or not the pattern matches.
 function lower_pattern_to_boolean(bound_pattern::BoundPattern, binder::BinderContext)
-    Expr(:block, bound_pattern.location, code(bound_pattern, binder))
+    Expr(:block, loc(bound_pattern), code(bound_pattern, binder))
 end
 function lower_pattern_to_boolean(bound_pattern::BoundFetchPattern, binder::BinderContext)
     # since fetches are performed purely for their side-effects, and
     # joined to the computations that require the fetched value using `and`,
     # we return `true` as the boolean value whenever we perform one.
     # (Fetches always succeed)
-    Expr(:block, bound_pattern.location, code(bound_pattern, binder), true)
+    Expr(:block, loc(bound_pattern), code(bound_pattern, binder), true)
 end

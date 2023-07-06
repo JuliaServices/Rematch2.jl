@@ -3,8 +3,8 @@ using Base: ImmutableDict
 
 # Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
 # See https://github.com/JuliaLang/julia/issues/50241
-# Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
-# See https://github.com/JuliaLang/julia/issues/50241
+# That bug is apparently fixed in Julia 1.10, but this package supports backward compat
+# versions earlier than that.
 # const Assigned = ImmutableDict{Symbol, Symbol}
 
 # We have a node for each pattern form.  Some syntactic pattern forms are broken
@@ -12,6 +12,8 @@ using Base: ImmutableDict
 # an `AndPattern` that combines a `TypePattern` (for String) with a
 # `BindVariablePattern` (to bind s).
 abstract type BoundPattern end
+loc(p::BoundPattern) = p.location
+source(p::BoundPattern) = p.source
 
 # Patterns which fetch intermediate values so they may be reused later without
 # being recomputed.  Each one has the side-effect of assigning a computed
@@ -46,34 +48,74 @@ function BoundBoolPattern(location::LineNumberNode, source::Any, b::Bool)
     b ? BoundTruePattern(location, source) : BoundFalsePattern(location, source)
 end
 
+#
+# A data structure representing a user-written expression, which can occur in one of
+# several syntactic contexts.  The `source` field is the expression itself, and the
+# `assignments` field is a dictionary mapping from variable names to the names of
+# temporary variables that have been assigned to hold the values of those variables.
+# The `assignments` field is used to rewrite the expression into a form that can be
+# evaluated in the context of a pattern match.
+# The `location` field is the location of the expression in the source code.
+#
+struct BoundExpression
+    location::LineNumberNode
+    source::Any
+    assignments::ImmutableDict{Symbol, Symbol}
+    function BoundExpression(location::LineNumberNode,
+        source::Any,
+        assignments::ImmutableDict{Symbol, Symbol} = ImmutableDict{Symbol, Symbol}())
+        new(location, source, assignments)
+    end
+end
+function Base.hash(a::BoundExpression, h::UInt64)
+    hash((a.source, a.assignments, 0xdbf4fc8b24ef8890), h)
+end
+# TODO: we should compare source ignoring location nodes contained within it
+function Base.:(==)(a::BoundExpression, b::BoundExpression)
+    isequal(a.source, b.source) && a.assignments == b.assignments
+end
+loc(p::BoundExpression) = p.location
+source(p::BoundExpression) = p.source
+function pretty(io::IO, e::BoundExpression)
+    if !isempty(e.assignments)
+        print(io, "[")
+        for (i, (k, v)) in enumerate(e.assignments)
+            i > 1 && print(io, ", ")
+            pretty(io, k)
+            print(io, " => ")
+            pretty(io, v)
+        end
+        print(io, "] ")
+    end
+    pretty(io, e.source)
+end
+function code(e::BoundExpression)
+    value = Expr(:block, e.location, e.source)
+    assignments = Expr(:block, (:($k = $v) for (k, v) in e.assignments)...)
+    return Expr(:let, assignments, value)
+end
+
 # A pattern like `1`, `$(expression)`, or `x` where `x` is already bound.
 # Note that for a pattern variable `x` that is previously bound, `x` means
 # the same thing as `$x` or `$(x)`.  We test a constant pattern by applying
 # `isequal(input_value, pattern.value)`
-# The stored `value` has had substitutions (recorded in `assigned`) applied
-# by the caller, so that semantically equivalent tests might be syntactically
-# equivalent.
-# The stored `value` has had substitutions (recorded in `assigned`) applied
-# by the caller, so that semantically equivalent tests might be syntactically
-# equivalent.
 struct BoundEqualValueTestPattern <: BoundTestPattern
-    location::LineNumberNode
-    source::Any
     input::Symbol
-    value::Any  # the value that the input should be compared to using `isequal`
-    assigned::ImmutableDict{Symbol, Symbol}
+    bound_expression::BoundExpression
 end
 function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
-    hash((a.input, a.value, 0x7e92a644c831493f), h)
+    hash((a.input, a.bound_expression, 0x7e92a644c831493f), h)
 end
 function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a.input == b.input && isequal(a.value, b.value)
+    a.input == b.input && isequal(a.bound_expression, b.bound_expression)
 end
 function pretty(io::IO, p::BoundEqualValueTestPattern)
     pretty(io, p.input)
     print(io, " == ")
-    pretty(io, p.value)
+    pretty(io, p.bound_expression)
 end
+loc(p::BoundEqualValueTestPattern) = loc(p.bound_expression)
+source(p::BoundEqualValueTestPattern) = source(p.bound_expression)
 
 # A pattern that compares the input, which must be an Integer, using a Relational
 # operator, to a given value.  Used to ensure that list patterns match against a
@@ -248,9 +290,10 @@ function pretty(io::IO, p::BoundFetchFieldPattern)
     print(io, ".", p.field_name)
 end
 
-# Fetch a value at a given index of the input into a temporary.  See `BoundFetchFieldPattern`
-# for the general idea of how these are used.  Negative indices index from the end of
-# the input; `index==-1` accesses the last element.
+# Fetch a value at a given index of the input into a temporary.  See
+# `BoundFetchFieldPattern` for the general idea of how these are used.
+# Negative indices index from the end of the input; `index==-1` accesses
+# the last element.
 struct BoundFetchIndexPattern <: BoundFetchPattern
     location::LineNumberNode
     source::Any
@@ -312,29 +355,26 @@ end
 # Preserve the value of the expression into a temp.  Used
 # (1) to force the binding on both sides of an or-pattern to be the same (a phi), and
 # (2) to load the value of a `where` clause.
-# The stored `value` has had substitutions (recorded in `assigned`) applied by the caller,
-# so that semantically equivalent values might be syntactically equivalent.
 #
 # The key, if provided, will be used as the temp.  That is used to ensure every phi
 # is assigned a distinct temp (even if it is the same variable binding that is being
 # preserved).
 struct BoundFetchExpressionPattern <: BoundFetchPattern
-    location::LineNumberNode
-    source::Any
-    value::Any    # value to be  preserved, e.g. previous binding of a variable
-    assigned::ImmutableDict{Symbol, Symbol}
-    key::Union{Nothing, Symbol}   # key to identify the temp, or user variable to be preserved
+    bound_expression::BoundExpression
+    key::Union{Nothing, Symbol}
     type::Type
 end
 function Base.hash(a::BoundFetchExpressionPattern, h::UInt64)
-    hash((a.value, a.key, 0x53f0f6a137a891d8), h)
+    hash((a.bound_expression, a.key, 0x53f0f6a137a891d8), h)
 end
 function Base.:(==)(a::BoundFetchExpressionPattern, b::BoundFetchExpressionPattern)
-    a.value == b.value && a.key == b.key
+    a.bound_expression == b.bound_expression && a.key == b.key
 end
 function pretty(io::IO, p::BoundFetchExpressionPattern)
-    pretty(io, p.value)
+    pretty(io, p.bound_expression)
 end
+loc(p::BoundFetchExpressionPattern) = loc(p.bound_expression)
+source(p::BoundFetchExpressionPattern) = source(p.bound_expression)
 
 #
 # Pattern properties

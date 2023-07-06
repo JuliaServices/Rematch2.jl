@@ -10,6 +10,11 @@ macro where_thrown()
     end
 end
 
+# Quote the syntax without interpolation.
+macro no_escape_quote(x)
+    QuoteNode(x)
+end
+
 struct True; end
 
 struct Foo
