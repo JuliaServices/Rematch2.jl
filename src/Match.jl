@@ -1,16 +1,20 @@
+#
+# Implementation of `@match pattern = value`
+#
 function handle_match_eq(location::LineNumberNode, mod::Module, expr)
     is_expr(expr, :(=), 2) ||
         error(string("Unrecognized @match syntax: ", expr))
     pattern = expr.args[1]
     value = expr.args[2]
-
     binder = BinderContext(mod)
     input_variable::Symbol = binder.input_variable
     (bound_pattern, assigned) = bind_pattern!(
         location, pattern, input_variable, binder, ImmutableDict{Symbol, Symbol}())
-
-    matched = lower_pattern_to_boolean(bound_pattern, binder)
+    simplified_pattern = simplify(bound_pattern, Set{Symbol}(values(assigned)), binder)
+    matched = lower_pattern_to_boolean(simplified_pattern, binder)
     q = Expr(:block,
+        location,
+
         # evaluate the assertions
         binder.assertions...,
 
@@ -20,12 +24,39 @@ function handle_match_eq(location::LineNumberNode, mod::Module, expr)
         # check that it matched the pattern; if not throw an exception
         :($matched || $throw($MatchFailure($input_variable))),
 
-        # assign to pattern variables.
+        # assign to pattern variables in the enclosing scope
         assignments(assigned)...,
 
         # finally, yield the input that was matched
-        input_variable)
+        input_variable
+    )
     esc(q)
+end
+
+#
+# Implementation of `@ismatch value pattern`
+#
+function handle_ismatch(location::LineNumberNode, mod::Module, value, pattern)
+    binder = BinderContext(mod)
+    input_variable::Symbol = binder.input_variable
+    bound_pattern, assigned = bind_pattern!(
+        location, pattern, input_variable, binder, ImmutableDict{Symbol, Symbol}())
+    simplified_pattern = simplify(bound_pattern, Set{Symbol}(values(assigned)), binder)
+    matched = lower_pattern_to_boolean(simplified_pattern, binder)
+    bindings = Expr(:block, assignments(assigned)..., true)
+    result = Expr(:block,
+        location,
+
+        # evaluate the assertions
+        binder.assertions...,
+
+        # compute the input into a variable so we do not repeat its side-effects
+        :($input_variable = $value),
+
+        # check that it matched the pattern; if so assign pattern variables
+        :($matched && $bindings)
+    )
+    esc(result)
 end
 
 """
@@ -141,4 +172,31 @@ Repeated variables only match if they are equal (`==`). For example `(x,x)` matc
 """
 macro match end
 
-export @match
+"""
+Usage:
+```
+    @ismatch value pattern
+```
+
+Return `true` if `value` matches `pattern`, `false` otherwise.  When returning `true`,
+binds the pattern variables in the enclosing scope.  Typically, it would be used like this:
+
+```
+    if @ismatch value pattern
+        # use the pattern variables
+    end
+```
+
+or
+
+```
+    if (@ismatch value pattern) && (some_other_condition)
+        # use the pattern variables
+    end
+```
+
+guarded patterns ought not be used with @ismatch, as you can just use `&&` instead.
+"""
+macro ismatch(value, pattern)
+    handle_ismatch(__source__, __module__, value, pattern)
+end

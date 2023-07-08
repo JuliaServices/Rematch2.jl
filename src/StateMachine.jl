@@ -1,75 +1,3 @@
-#
-# A data structure representing information about a match case in one
-# node of the decision automaton for a @match block statement.
-# Given a statement
-#
-# @match expression begin
-#     pattern => result
-#     ....
-# end
-#
-# The bound pattern represents the remaining operations needed to
-# decide if the pattern matches.
-#
-struct CasePartialResult
-    # The index of the case, starting with 1 for the first => in the @match
-    case_number::Int
-
-    # Its location for error reporting purposes
-    location::LineNumberNode
-
-    # Its source for error reporting
-    pattern_source
-
-    # The set of remaining operations required to perform the match.
-    # In this node of the automaton, some operations may have already been done,
-    # and they are removed from the bound pattern.  When the bound pattern is
-    # simply `true`, it has matched.
-    pattern::BoundPattern
-
-    # The user's result expression for this case.
-    result_expression::BoundExpression
-
-    _cached_hash::UInt64
-    function CasePartialResult(
-        case_number::Int,
-        location::LineNumberNode,
-        pattern_source,
-        pattern::BoundPattern,
-        result_expression::BoundExpression)
-        _hash = hash((case_number, pattern, result_expression), 0x1cdd9657bfb1e645)
-        new(case_number, location, pattern_source, pattern, result_expression, _hash)
-    end
-end
-function with_pattern(
-    case::CasePartialResult,
-    new_pattern::BoundPattern)
-    CasePartialResult(
-        case.case_number,
-        case.location,
-        case.pattern_source,
-        new_pattern,
-        case.result_expression)
-end
-function Base.hash(case::CasePartialResult, h::UInt64)
-    hash(case._cached_hash, h)
-end
-Base.hash(case::CasePartialResult) = case._cached_hash
-function Base.:(==)(a::CasePartialResult, b::CasePartialResult)
-    a._cached_hash == b._cached_hash &&
-    isequal(a.case_number, b.case_number) &&
-        isequal(a.pattern, b.pattern) &&
-        isequal(a.result_expression, b.result_expression)
-end
-function pretty(io::IO, case::CasePartialResult, binder::BinderContext)
-    print(io, case.case_number, ": ")
-    pretty(io, case.pattern, binder)
-    print(io, " => ")
-    pretty(io, case.result_expression)
-    println(io)
-end
-loc(case::CasePartialResult) = case.location
-
 abstract type AbstractAutomatonNode end
 
 #
@@ -80,7 +8,7 @@ mutable struct AutomatonNode <: AbstractAutomatonNode
     # The status of the cases.  Impossible cases, which are designated by a
     # `false` `bound_pattern`, are removed from this array.  Cases are always
     # ordered by `case_number`.
-    @_const cases::ImmutableVector{CasePartialResult}
+    @_const cases::ImmutableVector{BoundCase}
 
     # The selected action to take from this node: either
     # - Nothing, before it has been computed, or
@@ -88,7 +16,7 @@ mutable struct AutomatonNode <: AbstractAutomatonNode
     # - A bound pattern to perform and then move on to the next node, or
     # - An Expr to insert into the code when all else is exhausted
     #   (which throws MatchFailure)
-    action::Union{Nothing, CasePartialResult, BoundPattern, Expr}
+    action::Union{Nothing, BoundCase, BoundPattern, Expr}
 
     # The next node(s):
     # - Nothing before being computed
@@ -101,7 +29,7 @@ mutable struct AutomatonNode <: AbstractAutomatonNode
 
     @_const _cached_hash::UInt64
 
-    function AutomatonNode(cases::Vector{CasePartialResult})
+    function AutomatonNode(cases::Vector{BoundCase})
         cases = filter(case -> !(case.pattern isa BoundFalsePattern), cases)
         for i in eachindex(cases)
             if is_irrefutable(cases[i].pattern)
@@ -163,7 +91,7 @@ function pretty(
     end
     action = node.action
     long && print(io, "   ")
-    if action isa CasePartialResult
+    if action isa BoundCase
         print(io, " MATCH ", action.case_number, " with value ")
         pretty(io, action.result_expression)
     elseif action isa BoundPattern
@@ -211,14 +139,14 @@ end
 
 # We merge nodes with identical behavior, bottom-up, to minimize the size of
 # the decision automaton.  We define `hash` and `==` to take account of only what matters.
-# Specifically, we ignore the `cases::ImmutableVector{CasePartialResult}` of `AutomatonNode`.
+# Specifically, we ignore the `cases::ImmutableVector{BoundCase}` of `AutomatonNode`.
 mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
     # The selected action to take from this node: either
     # - Case whose tests have all passed, or
     # - A bound pattern to perform and then move on to the next node, or
     # - An Expr to insert into the code when all else is exhausted
     #   (which throws MatchFailure)
-    @_const action::Union{CasePartialResult, BoundPattern, Expr}
+    @_const action::Union{BoundCase, BoundPattern, Expr}
 
     # The next code point(s):
     # - Tuple{} if the action is a case which was matched or a MatchFailure
@@ -231,7 +159,7 @@ mutable struct DeduplicatedAutomatonNode <: AbstractAutomatonNode
 
     @_const _cached_hash::UInt64
     function DeduplicatedAutomatonNode(action, next)
-        action isa CasePartialResult && @assert action.pattern isa BoundTruePattern
+        action isa BoundCase && @assert action.pattern isa BoundTruePattern
         new(action, next, hash((action, next)))
     end
 end

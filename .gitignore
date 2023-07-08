@@ -7,3 +7,5 @@ Manifest.toml
 /docs/Manifest.toml
 /tmp/*
 .vscode
+.DS_Store
+._*

@@ -25,6 +25,20 @@ end
 
 @testset "@rematch2 tests" begin
 
+@testset "Check that `,if condition end` guards are parsed properly" begin
+    x = true
+    @test (@match2 3 begin
+        ::Int, if x end => 1
+        _ => 2
+    end) == 1
+
+    x = false
+    @test (@match2 3 begin
+        ::Int, if x end => 1
+        _ => 2
+    end) == 2
+end
+
 @testset "Check that `where` clauses are reparsed properly 1" begin
     x = true
     @test (@match2 3 begin
@@ -593,7 +607,7 @@ end
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Unrecognized @match2 block syntax: `b + c`."
+                @test e.msg == "$file:$line: Unrecognized @match block syntax: `b + c`."
             end
         end
     end
@@ -610,7 +624,7 @@ end
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test startswith(e.msg, "$file:$line: Unrecognized @match2 case syntax: `2 + 2 =")
+                @test startswith(e.msg, "$file:$line: Unrecognized @match case syntax: `2 + 2 =")
             end
         end
     end

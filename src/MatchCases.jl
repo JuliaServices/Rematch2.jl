@@ -1,56 +1,45 @@
 struct MatchCaseResult
     location::LineNumberNode
     matched_expression::Any
-    result_expression::BoundExpression
-end
-
-function handle_match_case(
-    location::LineNumberNode,
-    input_variable::Symbol,
-    case,
-    binder::BinderContext)
-    assigned = ImmutableDict{Symbol, Symbol}()
-
-    is_expr(case, :call, 3) && case.args[1] == :(=>) ||
-        error("$(location.file):$(location.line): Unrecognized @match case syntax: `$case`.")
-    pattern = case.args[2]
-    result = case.args[3]
-    (bound_pattern, assigned) = bind_pattern!(
-        location, pattern, input_variable, binder, assigned)
-    matched = lower_pattern_to_boolean(bound_pattern, binder)
-
-    result_expression = bind_expression(location, result, assigned)
-    return MatchCaseResult(location, matched, result_expression)
+    result_expression::Any
 end
 
 function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
-    if match isa Expr && match.head == :call && match.args[1] == :(=>)
+    if is_case(match)
         # previous version of @match supports `@match(expr, pattern => value)`
-        match = Expr(:block, match)
-    elseif !(match isa Expr) || match.head != :block
+        match = Expr(:block, location, match)
+    elseif !is_expr(match, :block)
         error("$(location.file):$(location.line): Unrecognized @match block syntax: `$match`.")
     end
 
     binder = BinderContext(mod)
     input_variable::Symbol = binder.input_variable
     cases = MatchCaseResult[]
+    predeclared_temps = Any[]
 
     for case in match.args
         if case isa LineNumberNode
             location = case
         else
-            push!(cases, handle_match_case(location, input_variable, case, binder))
+            bound_case = bind_case(length(cases) + 1, location, case, predeclared_temps, binder)
+            matched = lower_pattern_to_boolean(bound_case.pattern, binder)
+            push!(cases, MatchCaseResult(location, matched, code(bound_case.result_expression)))
         end
     end
 
-    tail = :($throw($MatchFailure($input_variable)))
-    n = length(cases)
-    for (i, case) in enumerate(reverse(cases))
-        eval = Expr(:block, case.location, code(case.result_expression))
-        tail = Expr(i == n ? :if : :elseif, case.matched_expression, eval, tail)
+    # Fold the cases into a series of if-elseif-else statements
+    body = foldr(enumerate(cases); init = :($throw($MatchFailure($input_variable)))) do (i, case), tail
+        Expr(i == 1 ? :if : :elseif, case.matched_expression, case.result_expression, tail)
     end
-    result = Expr(:block, binder.assertions..., :($input_variable = $value), tail)
-    # We use a `let` to mimic Rematch's closed scopes.
-    result = Expr(:let, Expr(:block), result)
-    esc(result)
+
+    declare_temps = Expr(:block, predeclared_temps...)
+    body = Expr(:block,
+        location,
+        binder.assertions...,
+        :($input_variable = $value),
+        body)
+
+    # We use a `let` to ensure consistent closed scoping
+    body = Expr(:let, declare_temps, body)
+    esc(body)
 end
