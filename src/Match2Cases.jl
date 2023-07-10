@@ -27,7 +27,7 @@ function build_automaton_core(
     # If the value had a type annotation, then we can use that to
     # narrow down the cases that we need to consider.
     input_type = Any
-    if is_expr(value, :(::)) && length(value.args) == 2
+    if is_expr(value, :(::), 2)
         type = value.args[2]
         try
             input_type = bind_type(location, type, binder.input_variable, binder)

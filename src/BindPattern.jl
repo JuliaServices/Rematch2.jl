@@ -106,9 +106,9 @@ function simple_name(s::Symbol)
 end
 function simple_name(n::String)
     @assert startswith(n, "##")
-    n1 = n[3:length(n)]
+    n1 = n[3:end]
     last = findlast('#', n1)
-    (last isa Int) ? n1[1:(last-1)] : n1
+    isnothing(last) ? n1 : n1[1:prevind(n1, last)]
 end
 
 #
@@ -550,7 +550,7 @@ function bind_case(
             # expand top-level macros only
             case = macroexpand(binder.mod, case, recursive=false)
 
-        elseif is_expr(case, :tuple, 2) && is_case(case.args[2]) && is_expr(case.args[2].args[2], :if)
+        elseif is_expr(case, :tuple, 2) && is_case(case.args[2]) && is_expr(case.args[2].args[2], :if, 2)
             # rewrite `pattern, if guard end => result`, which parses as
             # `pattern, (if guard end => result)`
             # to `(pattern, if guard end) => result`
@@ -564,7 +564,7 @@ function bind_case(
             # rewrite `(pattern, if guard end) => result`
             # to `(pattern where guard) => result`
             pattern = case.args[2]
-            if is_expr(pattern, :tuple, 2) && is_expr(pattern.args[2], :if)
+            if is_expr(pattern, :tuple, 2) && is_expr(pattern.args[2], :if, 2)
                 if_guard = pattern.args[2]
                 if !is_empty_block(if_guard.args[2])
                     error("$(location.file):$(location.line): Unrecognized @match guard syntax: `$if_guard`.")

@@ -182,16 +182,16 @@ Return `true` if `value` matches `pattern`, `false` otherwise.  When returning `
 binds the pattern variables in the enclosing scope.  Typically, it would be used like this:
 
 ```
-    if @ismatch value pattern
-        # use the pattern variables
+    if @ismatch point Point(0, y)
+        println("On the y axis at y = \$y")
     end
 ```
 
 or
 
 ```
-    if (@ismatch value pattern) && (some_other_condition)
-        # use the pattern variables
+    if (@ismatch point Point(x, y)) && x < y
+        println("The point (\$x, \$y) is in the upper left")
     end
 ```
 

@@ -19,9 +19,9 @@ macro _const(x)
     end
 end
 
-is_expr(e, head) = e isa Expr && e.head == head
-is_expr(e, head, n) = is_expr(e, head) && length(e.args) == n
-is_case(e) = is_expr(e, :call, 3) && e.args[1] == :(=>)
+is_expr(@nospecialize(e), head::Symbol) = e isa Expr && e.head == head
+is_expr(@nospecialize(e), head::Symbol, n::Int) = is_expr(e, head) && length(e.args) == n
+is_case(@nospecialize(e)) = is_expr(e, :call, 3) && e.args[1] == :(=>)
 
 include("TopologicalSort.jl")
 include("ImmutableVector.jl")

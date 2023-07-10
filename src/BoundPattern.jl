@@ -430,7 +430,7 @@ end
 function with_pattern(
     case::BoundCase,
     new_pattern::BoundPattern)
-    BoundCase(
+    return BoundCase(
         case.case_number,
         case.location,
         case.pattern_source,
