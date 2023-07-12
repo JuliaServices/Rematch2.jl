@@ -23,15 +23,15 @@ is_expr(@nospecialize(e), head::Symbol) = e isa Expr && e.head == head
 is_expr(@nospecialize(e), head::Symbol, n::Int) = is_expr(e, head) && length(e.args) == n
 is_case(@nospecialize(e)) = is_expr(e, :call, 3) && e.args[1] == :(=>)
 
-include("TopologicalSort.jl")
-include("ImmutableVector.jl")
-include("BoundPattern.jl")
-include("BindPattern.jl")
-include("LowerPattern.jl")
-include("MatchCases.jl")
-include("Match.jl")
-include("StateMachine.jl")
-include("Match2Cases.jl")
-include("Return.jl")
+include("topological.jl")
+include("immutable_vector.jl")
+include("bound_pattern.jl")
+include("binding.jl")
+include("lowering.jl")
+include("match_cases_simple.jl")
+include("macros.jl")
+include("automaton.jl")
+include("match_cases_opt.jl")
+include("match_return.jl")
 
 end # module
