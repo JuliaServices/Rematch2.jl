@@ -1,5 +1,3 @@
-using OrderedCollections: OrderedDict
-
 # Compute a topological ordering of a set of nodes reachable from the given
 # roots by the given successor function.
 function topological_sort(successors::Function, roots::AbstractVector{N}) where { N }

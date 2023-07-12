@@ -5,6 +5,7 @@ export @match, @match2, MatchFailure, @match_return, @match_fail, @ismatch
 using MacroTools: MacroTools, @capture
 using Base.Iterators: reverse
 using Base: ImmutableDict
+using OrderedCollections: OrderedDict
 
 struct MatchFailure <: Exception
     value
@@ -31,6 +32,7 @@ include("lowering.jl")
 include("match_cases_simple.jl")
 include("macros.jl")
 include("automaton.jl")
+include("pretty.jl")
 include("match_cases_opt.jl")
 include("match_return.jl")
 

@@ -1,6 +1,3 @@
-using Base: ImmutableDict
-using Base: ImmutableDict
-
 # Unfortunately, using a type alias instead of the written-out type tickles a Julia bug.
 # See https://github.com/JuliaLang/julia/issues/50241
 # That bug is apparently fixed in Julia 1.10, but this package supports backward compat
@@ -23,14 +20,6 @@ abstract type BoundFetchPattern <: BoundPattern end
 # Patterns which test some boolean condition.
 abstract type BoundTestPattern <: BoundPattern end
 
-# Functions for pretty-printing patterns and the decision automaton
-pretty(io::IO, x::Any) = print(io, x)
-function pretty(x::Any)
-    io = IOBuffer()
-    pretty(io, x)
-    String(take!(io))
-end
-
 # A pattern that always matches
 struct BoundTruePattern <: BoundPattern
     location::LineNumberNode
@@ -38,7 +27,6 @@ struct BoundTruePattern <: BoundPattern
 end
 Base.hash(::BoundTruePattern, h::UInt64) = hash(0x8cc17f34ef3bbb1d, h)
 Base.:(==)(a::BoundTruePattern, b::BoundTruePattern) = true
-pretty(io::IO, ::BoundTruePattern) = print(io, "true")
 
 # A pattern that never matches
 struct BoundFalsePattern <: BoundPattern
@@ -47,7 +35,6 @@ struct BoundFalsePattern <: BoundPattern
 end
 Base.hash(::BoundFalsePattern, h::UInt64) = hash(0xeb817c7d6beb3bda, h)
 Base.:(==)(a::BoundFalsePattern, b::BoundFalsePattern) = true
-pretty(io::IO, ::BoundFalsePattern) = print(io, "false")
 
 function BoundBoolPattern(location::LineNumberNode, source::Any, b::Bool)
     b ? BoundTruePattern(location, source) : BoundFalsePattern(location, source)
@@ -81,28 +68,6 @@ function Base.:(==)(a::BoundExpression, b::BoundExpression)
 end
 loc(p::BoundExpression) = p.location
 source(p::BoundExpression) = p.source
-function pretty(io::IO, e::BoundExpression)
-    if !isempty(e.assignments)
-        pretty(io, e.assignments)
-        print(io, " ")
-    end
-    pretty(io, e.source)
-end
-function pretty(io::IO, assignments::ImmutableDict{Symbol, Symbol})
-    print(io, "[")
-    for (i, (k, v)) in enumerate(assignments)
-        i > 1 && print(io, ", ")
-        pretty(io, k)
-        print(io, " => ")
-        pretty(io, v)
-    end
-    print(io, "]")
-end
-function code(e::BoundExpression)
-    value = Expr(:block, e.location, e.source)
-    assignments = Expr(:block, (:($k = $v) for (k, v) in e.assignments)...)
-    return Expr(:let, assignments, value)
-end
 
 # A pattern like `1`, `$(expression)`, or `x` where `x` is already bound.
 # Note that for a pattern variable `x` that is previously bound, `x` means
@@ -122,13 +87,6 @@ function Base.:(==)(a::BoundIsMatchTestPattern, b::BoundIsMatchTestPattern)
     a.input == b.input &&
     a.force_equality == b.force_equality &&
     isequal(a.bound_expression, b.bound_expression)
-end
-function pretty(io::IO, p::BoundIsMatchTestPattern)
-    print(io, p.force_equality ? "isequal(" : "@ismatch(")
-    pretty(io, p.bound_expression)
-    print(io, ", ")
-    pretty(io, p.input)
-    print(io, ")")
 end
 loc(p::BoundIsMatchTestPattern) = loc(p.bound_expression)
 source(p::BoundIsMatchTestPattern) = source(p.bound_expression)
@@ -150,11 +108,6 @@ end
 function Base.:(==)(a::BoundRelationalTestPattern, b::BoundRelationalTestPattern)
     a.input == b.input && a.relation == b.relation && a.value == b.value
 end
-function pretty(io::IO, p::BoundRelationalTestPattern)
-    pretty(io, p.input)
-    print(io, " ", p.relation, " ")
-    pretty(io, p.value)
-end
 
 # A pattern that simply checks the given boolean variable
 struct BoundWhereTestPattern <: BoundTestPattern
@@ -169,10 +122,6 @@ end
 function Base.:(==)(a::BoundWhereTestPattern, b::BoundWhereTestPattern)
     a.input == b.input && a.inverted == b.inverted
 end
-function pretty(io::IO, p::BoundWhereTestPattern)
-    p.inverted && print(io, "!")
-    pretty(io, p.input)
-end
 
 # A pattern like ::Type which matches if the type matches.
 struct BoundTypeTestPattern <: BoundTestPattern
@@ -186,10 +135,6 @@ function Base.hash(a::BoundTypeTestPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundTypeTestPattern, b::BoundTypeTestPattern)
     a.input == b.input && a.type == b.type
-end
-function pretty(io::IO, p::BoundTypeTestPattern)
-    pretty(io, p.input)
-    print(io, " isa ", p.type)
 end
 
 # A pattern that matches if any disjunct matches
@@ -288,10 +233,6 @@ end
 function Base.:(==)(a::BoundFetchFieldPattern, b::BoundFetchFieldPattern)
     a.input == b.input && a.field_name == b.field_name
 end
-function pretty_fetch(io::IO, p::BoundFetchFieldPattern)
-    pretty(io, p.input)
-    print(io, ".", p.field_name)
-end
 
 # Fetch a value at a given index of the input into a temporary.  See
 # `BoundFetchFieldPattern` for the general idea of how these are used.
@@ -311,10 +252,6 @@ end
 function Base.:(==)(a::BoundFetchIndexPattern, b::BoundFetchIndexPattern)
     a.input == b.input && a.index == b.index
 end
-function pretty_fetch(io::IO, p::BoundFetchIndexPattern)
-    pretty(io, p.input)
-    print(io, "[", p.index, "]")
-end
 
 # Fetch a subsequence at a given range of the input into a temporary.
 struct BoundFetchRangePattern <: BoundFetchPattern
@@ -331,10 +268,6 @@ end
 function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
     a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
 end
-function pretty_fetch(io::IO, p::BoundFetchRangePattern)
-    pretty(io, p.input)
-    print(io, "[", p.first_index, ":(length(", pretty_name(p.input), ")-", p.from_end, ")]")
-end
 
 # Compute the length of the input (tuple or array)
 struct BoundFetchLengthPattern <: BoundFetchPattern
@@ -348,11 +281,6 @@ function Base.hash(a::BoundFetchLengthPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundFetchLengthPattern, b::BoundFetchLengthPattern)
     a.input == b.input
-end
-function pretty_fetch(io::IO, p::BoundFetchLengthPattern)
-    print(io, "length(")
-    pretty(io, p.input)
-    print(io, ")")
 end
 
 # Preserve the value of the expression into a temp.  Used
@@ -372,9 +300,6 @@ function Base.hash(a::BoundFetchExpressionPattern, h::UInt64)
 end
 function Base.:(==)(a::BoundFetchExpressionPattern, b::BoundFetchExpressionPattern)
     a.bound_expression == b.bound_expression && a.key == b.key
-end
-function pretty_fetch(io::IO, p::BoundFetchExpressionPattern)
-    pretty(io, p.bound_expression)
 end
 loc(p::BoundFetchExpressionPattern) = loc(p.bound_expression)
 source(p::BoundFetchExpressionPattern) = source(p.bound_expression)
