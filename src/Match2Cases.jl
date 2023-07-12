@@ -290,8 +290,8 @@ end
 function remove(action::BoundTestPattern, action_result::Bool, pattern::BoundTestPattern, binder::BinderContext)::BoundPattern
     return (action == pattern) ? BoundBoolPattern(loc(pattern), source(pattern), action_result) : pattern
 end
-function remove(action::BoundEqualValueTestPattern, action_result::Bool, pattern::BoundEqualValueTestPattern, binder::BinderContext)::BoundPattern
-    if action.input != pattern.input
+function remove(action::BoundIsMatchTestPattern, action_result::Bool, pattern::BoundIsMatchTestPattern, binder::BinderContext)::BoundPattern
+    if action.input != pattern.input || action.force_equality != pattern.force_equality
         return pattern
     end
     if isequal(action.bound_expression, pattern.bound_expression)
@@ -397,7 +397,7 @@ function simplify(pattern::BoundFetchExpressionPattern, required_temps::Set{Symb
         BoundTruePattern(loc(pattern), source(pattern))
     end
 end
-function simplify(pattern::BoundEqualValueTestPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
+function simplify(pattern::BoundIsMatchTestPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     push!(required_temps, pattern.input)
     for (v, t) in pattern.bound_expression.assignments
         push!(required_temps, t)
