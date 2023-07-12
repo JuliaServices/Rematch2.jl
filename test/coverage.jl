@@ -12,10 +12,13 @@ struct D; x; end
 abstract type Abstract1; end
 abstract type Abstract2; end
 
-struct Trash <: Rematch2.BoundFetchPattern
+struct TrashFetchPattern <: Rematch2.BoundFetchPattern
     location::LineNumberNode
 end
-
+struct TrashPattern <: Rematch2.BoundPattern
+    location::LineNumberNode
+end
+Rematch2.pretty(io::IO, ::TrashPattern) = print(io, "TrashPattern")
 const T = 12
 
 struct MyPair
@@ -397,10 +400,10 @@ end # of automaton
         end
     end
 
-    @testset "trigger some normally unreachable code" begin
+    @testset "trigger some normally unreachable code 1" begin
         @test_throws ErrorException Rematch2.gentemp(:a)
 
-        trash = Trash(LineNumberNode(@__LINE__, @__FILE__))
+        trash = TrashFetchPattern(LineNumberNode(@__LINE__, @__FILE__))
         binder = Rematch2.BinderContext(@__MODULE__)
         @test_throws ErrorException Rematch2.code(trash)
         @test_throws ErrorException Rematch2.code(trash, binder)
@@ -409,6 +412,28 @@ end # of automaton
             x=123
             Rematch2.@ismatch x (1:(2+3))
         end
+    end
+
+    @testset "trigger some normally unreachable code 2" begin
+        # Simplification of patterns should not normally get into a position where it can
+        # discard an unneeded `BoundFetchExpressionPattern` because that pattern is
+        # produced at the same time as another node that consumes its result.  However,
+        # the code is written to handle this case anyway.  Here we force that code to
+        # be exercised and verify the correct result if it were to somehow happen.
+        location = LineNumberNode(@__LINE__, @__FILE__)
+        expr = Rematch2.BoundExpression(location, 1)
+        pattern = Rematch2.BoundFetchExpressionPattern(expr, nothing, Int)
+        binder = Rematch2.BinderContext(@__MODULE__)
+        @test Rematch2.simplify(pattern, Set{Symbol}(), binder) isa Rematch2.BoundTruePattern
+    end
+
+    @testset "trigger some normally unreachable code 2" begin
+        location = LineNumberNode(@__LINE__, @__FILE__)
+        action = TrashPattern(location)
+        result = Rematch2.BoundExpression(location, 2)
+        node = Rematch2.DeduplicatedAutomatonNode(action, ())
+        binder = Rematch2.BinderContext(@__MODULE__)
+        @test_throws ErrorException Rematch2.generate_code([node], :x, location, binder)
     end
 
     function f300(x::T) where { T }
@@ -460,18 +485,34 @@ end # of automaton
     end
 
     @testset "Some other normally unreachable code 1" begin
-        f = Rematch2.BoundFalsePattern(LineNumberNode(@__LINE__, @__FILE__), false)
+        location = LineNumberNode(@__LINE__, @__FILE__)
+        f = Rematch2.BoundFalsePattern(location, false)
         @test_throws ErrorException Rematch2.next_action(f)
 
+        devnull = IOBuffer()
         node = Rematch2.AutomatonNode(Rematch2.BoundCase[])
-        pattern = Trash(LineNumberNode(@__LINE__, @__FILE__))
+        pattern = TrashFetchPattern(location)
         binder = Rematch2.BinderContext(@__MODULE__)
         @test_throws ErrorException Rematch2.make_next(node, pattern, binder)
+        @test_throws ErrorException Rematch2.pretty(devnull, pattern)
 
-        devnull = IOBuffer()
-        f = Rematch2.BoundFalsePattern(LineNumberNode(@__LINE__, @__FILE__), false)
-        Rematch2.pretty(devnull, f)
+        f = Rematch2.BoundFalsePattern(location, false)
+        @test Rematch2.pretty(f) == "false"
         @test f == f
+
+        function pretty(node::T, binder) where { T }
+            io = IOBuffer()
+            numberer = IdDict{T, Int}()
+            numberer[node] = 0
+            Rematch2.pretty(io, node, binder, numberer, true)
+            String(take!(io))
+        end
+        node = Rematch2.AutomatonNode(Rematch2.BoundCase[])
+        @test pretty(node, binder) == "Node 0\n   "
+        node.action = TrashPattern(location)
+        @test pretty(node, binder) == "Node 0\n   TrashPattern"
+        pattern = TrashPattern(location)
+        @test_throws ErrorException Rematch2.make_next(node, pattern, binder)
     end
 
     @testset "Abstract types" begin
@@ -481,6 +522,21 @@ end # of automaton
             ::Abstract2 => 2
             _ => 3
         end) == 3
+    end
+
+    @testset "Nested use of @match2" begin
+        @test (@match2 1 begin
+            x => @match2 2 begin
+                2 => 3x
+            end
+        end) == 3
+    end
+
+    @testset "immutable vector" begin
+        iv = Rematch2.ImmutableVector([1, 2, 3, 4, 5])
+        @test iv[2:3] == Rematch2.ImmutableVector([2, 3])
+        h = hash(iv, UInt(0x12))
+        @test h isa UInt
     end
 
 end # @testset "Tests that add code coverage"

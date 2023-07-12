@@ -90,7 +90,7 @@ end
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: Unregognized pattern syntax `(Foo where unbound)(1, 2)`."
+            @test e.msg == "$file:$line: Unrecognized pattern syntax `(Foo where unbound)(1, 2)`."
         end
     end
 end
@@ -569,7 +569,7 @@ end
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Unregognized pattern syntax `x + y`."
+                @test e.msg == "$file:$line: Unrecognized pattern syntax `x + y`."
             end
         end
     end

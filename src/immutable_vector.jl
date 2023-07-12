@@ -15,7 +15,6 @@ Base.eachindex(a::ImmutableVector) = 1:length(a)
 Base.IndexStyle(::Type{<:ImmutableVector}) = IndexLinear()
 Base.convert(::Type{ImmutableVector{T}}, x::Vector{T}) where {T} = ImmutableVector{T}(x)
 Base.hash(a::ImmutableVector{T}, h::UInt64) where {T} = hash(a._cached_hash, h)
-Base.hash(a::ImmutableVector{T}) where {T} = a._cached_hash
 function Base.:(==)(a::ImmutableVector{T}, b::ImmutableVector{T}) where {T}
     isequal(a._cached_hash, b._cached_hash) && isequal(a._data, b._data)
 end

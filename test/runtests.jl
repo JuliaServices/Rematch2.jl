@@ -1,6 +1,7 @@
 module Rematch2Tests
 
 using Rematch2
+using Rematch2: topological_sort
 using ReTest
 using Random
 using MacroTools: MacroTools
