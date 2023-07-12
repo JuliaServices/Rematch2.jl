@@ -404,6 +404,11 @@ end # of automaton
         binder = Rematch2.BinderContext(@__MODULE__)
         @test_throws ErrorException Rematch2.code(trash)
         @test_throws ErrorException Rematch2.code(trash, binder)
+        @test_throws ErrorException Rematch2.pretty(stdout, trash)
+        @test_throws LoadError @eval begin
+            x=123
+            Rematch2.@ismatch x (1:(2+3))
+        end
     end
 
     function f300(x::T) where { T }

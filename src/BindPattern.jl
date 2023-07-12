@@ -445,7 +445,7 @@ function bind_pattern!(
         lower = source.args[2]
         upper = source.args[3]
         if upper isa Expr || upper isa Symbol || lower isa Expr || lower isa Symbol
-            error("$(location.file):$(location.line): Unregognized pattern syntax `$(pretty(lower)):$(pretty(upper))`.")
+            error("$(location.file):$(location.line): Unregognized pattern syntax `($(pretty(lower))):($(pretty(upper)))`.")
         end
         pattern = BoundIsMatchTestPattern(input, BoundExpression(location, source), false)
 
