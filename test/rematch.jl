@@ -16,12 +16,15 @@
     @test !(@isdefined new_variable)
 end
 
-@testset "Assignments in a where clause only leak to the rule's result" begin
+@testset "Assignments in a where clause do not leak to the rule's result" begin
     @match Foo(1, 2) begin
         Foo(x, 2) where begin
             new_variable = 3
             true
-        end => new_variable
+        end => begin
+            @test !(@isdefined new_variable)
+            1
+        end
     end
     @test !(@isdefined x)
     @test !(@isdefined new_variable)
@@ -552,8 +555,8 @@ end
             [fronts..., $tup, back] => [fronts...,back]
             # complex expressions
             [$(a+b+c), out] => out
-            # splatting existing values
-            [fronts..., $(arr...), back] => [fronts...,back]
+            # splatting existing values not supported
+            # [fronts..., $(arr...), back] => [fronts...,back]
         end
     end
     # scalars
@@ -564,8 +567,8 @@ end
     @test test_interp_pattern([0,1, (100,200,300), 2]) == [0,1,2]
     # complex expressions
     @test test_interp_pattern([6,1]) == 1
-    # TODO: splatting existing values into pattern isn't suported yet.
-    @test_broken test_interp_pattern([0,1, 10,20,30, 2]) == [0,1,2]
+    # TODO: splatting existing values into pattern isn't suported
+    # @test_broken test_interp_pattern([0,1, 10,20,30, 2]) == [0,1,2]
 end
 
 # # --- tests from Match.jl ---

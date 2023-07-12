@@ -9,6 +9,9 @@ struct B <: A; end
 struct C <: A; end
 struct D; x; end
 
+abstract type Abstract1; end
+abstract type Abstract2; end
+
 struct Trash <: Rematch2.BoundFetchPattern
     location::LineNumberNode
 end
@@ -29,17 +32,17 @@ expected="""
 Decision Automaton: (57 nodes) input «input_value»
 Node 1
   1: «input_value» == 1 => 1
-  2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == «input_value.x») => 2
+  2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == [x => «input_value.x»] x) => 2
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
-  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
+  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && (e).q2 && «where_1») => 7
   8: («input_value» isa Main.Rematch2Tests.B && (e).q3 && «where_2») => 8
   9: («input_value» isa Main.Rematch2Tests.C && (e).q4 && «where_3») => 9
-  10: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value.x» == 1 && «input_value».y && (f2)(«input_value.y») && «where_5») => 2
-  12: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && (f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value.x» == 1 && «input_value».y && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && [x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value» == 1
     THEN: Node 2 (fall through)
     ELSE: Node 3
@@ -47,43 +50,43 @@ Node 2
   1: true => 1
     MATCH 1 with value 1
 Node 3
-  2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == «input_value.x») => 2
+  2: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == [x => «input_value.x»] x) => 2
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
-  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
+  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && (e).q2 && «where_1») => 7
   8: («input_value» isa Main.Rematch2Tests.B && (e).q3 && «where_2») => 8
   9: («input_value» isa Main.Rematch2Tests.C && (e).q4 && «where_3») => 9
-  10: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value.x» == 1 && «input_value».y && (f2)(«input_value.y») && «where_5») => 2
-  12: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && (f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && «input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value.x» == 1 && «input_value».y && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: («input_value» isa Main.Rematch2Tests.Foo && «input_value».x && «input_value».y && [x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value» isa Main.Rematch2Tests.Foo
     THEN: Node 4 (fall through)
     ELSE: Node 26
 Node 4
-  2: («input_value».x && «input_value».y && «input_value.y» == «input_value.x») => 2
+  2: («input_value».x && «input_value».y && «input_value.y» == [x => «input_value.x»] x) => 2
   6: («input_value» == 6 || «input_value» == 7) => 6
-  10: («input_value».x && «input_value».y && «input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value».x && «input_value.x» == 1 && «input_value».y && (f2)(«input_value.y») && «where_5») => 2
-  12: («input_value».x && «input_value».y && (f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value».x && «input_value».y && «input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value».x && «input_value.x» == 1 && «input_value».y && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: («input_value».x && «input_value».y && [x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     FETCH «input_value.x» := «input_value».x
     NEXT: Node 5 (fall through)
 Node 5
-  2: («input_value».y && «input_value.y» == «input_value.x») => 2
+  2: («input_value».y && «input_value.y» == [x => «input_value.x»] x) => 2
   6: («input_value» == 6 || «input_value» == 7) => 6
-  10: («input_value».y && «input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && «input_value».y && (f2)(«input_value.y») && «where_5») => 2
-  12: («input_value».y && (f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value».y && «input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && «input_value».y && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: («input_value».y && [x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     FETCH «input_value.y» := «input_value».y
     NEXT: Node 6 (fall through)
 Node 6
-  2: «input_value.y» == «input_value.x» => 2
+  2: «input_value.y» == [x => «input_value.x»] x => 2
   6: («input_value» == 6 || «input_value» == 7) => 6
-  10: («input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
-    TEST «input_value.y» == «input_value.x»
+  10: («input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
+    TEST «input_value.y» == [x => «input_value.x»] x
     THEN: Node 7 (fall through)
     ELSE: Node 8
 Node 7
@@ -91,37 +94,37 @@ Node 7
     MATCH 2 with value 2
 Node 8
   6: («input_value» == 6 || «input_value» == 7) => 6
-  10: («input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value» == 6
     THEN: Node 44
     ELSE: Node 9
 Node 9
   6: «input_value» == 7 => 6
-  10: («input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value» == 7
     THEN: Node 44
     ELSE: Node 10
 Node 10
-  10: («input_value.y» == 2 && (f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  10: («input_value.y» == 2 && [x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value.y» == 2
     THEN: Node 11 (fall through)
     ELSE: Node 17
 Node 11
-  10: ((f1)(«input_value.x») && «where_4») => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
-    FETCH «where_4» := (f1)(«input_value.x»)
+  10: ([x => «input_value.x»] (f1)(x) && «where_4») => 1
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
+    FETCH «where_4» := [x => «input_value.x»] (f1)(x)
     NEXT: Node 12 (fall through)
 Node 12
   10: «where_4» => 1
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: («where_4» && (f2)(«input_value.y») && «where_5») => 3
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: («where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «where_4»
     THEN: Node 13 (fall through)
     ELSE: Node 14
@@ -129,13 +132,13 @@ Node 13
   10: true => 1
     MATCH 10 with value 1
 Node 14
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
     TEST «input_value.x» == 1
     THEN: Node 15 (fall through)
     ELSE: Node 57
 Node 15
-  11: ((f2)(«input_value.y») && «where_5») => 2
-    FETCH «where_5» := (f2)(«input_value.y»)
+  11: ([y => «input_value.y»] (f2)(y) && «where_5») => 2
+    FETCH «where_5» := [y => «input_value.y»] (f2)(y)
     NEXT: Node 16 (fall through)
 Node 16
   11: «where_5» => 2
@@ -143,19 +146,19 @@ Node 16
     THEN: Node 20
     ELSE: Node 57
 Node 17
-  11: («input_value.x» == 1 && (f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
+  11: («input_value.x» == 1 && [y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «input_value.x» == 1
     THEN: Node 18 (fall through)
     ELSE: Node 21
 Node 18
-  11: ((f2)(«input_value.y») && «where_5») => 2
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
-    FETCH «where_5» := (f2)(«input_value.y»)
+  11: ([y => «input_value.y»] (f2)(y) && «where_5») => 2
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
+    FETCH «where_5» := [y => «input_value.y»] (f2)(y)
     NEXT: Node 19 (fall through)
 Node 19
   11: «where_5» => 2
-  12: ((f1)(«input_value.x») && «where_4» && «where_5») => 3
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && «where_5») => 3
     TEST «where_5»
     THEN: Node 20 (fall through)
     ELSE: Node 57
@@ -163,17 +166,17 @@ Node 20
   11: true => 2
     MATCH 11 with value 2
 Node 21
-  12: ((f1)(«input_value.x») && «where_4» && (f2)(«input_value.y») && «where_5») => 3
-    FETCH «where_4» := (f1)(«input_value.x»)
+  12: ([x => «input_value.x»] (f1)(x) && «where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
+    FETCH «where_4» := [x => «input_value.x»] (f1)(x)
     NEXT: Node 22 (fall through)
 Node 22
-  12: («where_4» && (f2)(«input_value.y») && «where_5») => 3
+  12: («where_4» && [y => «input_value.y»] (f2)(y) && «where_5») => 3
     TEST «where_4»
     THEN: Node 23 (fall through)
     ELSE: Node 57
 Node 23
-  12: ((f2)(«input_value.y») && «where_5») => 3
-    FETCH «where_5» := (f2)(«input_value.y»)
+  12: ([y => «input_value.y»] (f2)(y) && «where_5») => 3
+    FETCH «where_5» := [y => «input_value.y»] (f2)(y)
     NEXT: Node 24 (fall through)
 Node 24
   12: «where_5» => 3
@@ -185,8 +188,8 @@ Node 25
     MATCH 12 with value 3
 Node 26
   3: «input_value» isa Main.Rematch2Tests.D => 3
-  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
-  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
+  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && (e).q2 && «where_1») => 7
   8: («input_value» isa Main.Rematch2Tests.B && (e).q3 && «where_2») => 8
@@ -198,8 +201,8 @@ Node 27
   3: true => 3
     MATCH 3 with value 3
 Node 28
-  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
-  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  4: («input_value» isa AbstractArray && length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
+  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && (e).q2 && «where_1») => 7
   8: («input_value» isa Main.Rematch2Tests.B && (e).q3 && «where_2») => 8
@@ -208,25 +211,25 @@ Node 28
     THEN: Node 29 (fall through)
     ELSE: Node 33
 Node 29
-  4: (length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
+  4: (length(«input_value») && «length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
   6: («input_value» == 6 || «input_value» == 7) => 6
     FETCH «length(input_value)» := length(«input_value»)
     NEXT: Node 30 (fall through)
 Node 30
-  4: («length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => «input_value[2:(length-1)]»
+  4: («length(input_value)» >= 2 && «input_value»[2:(length(«input_value»)-1)]) => [y => «input_value[2:(length-1)]»] y
   6: («input_value» == 6 || «input_value» == 7) => 6
     TEST «length(input_value)» >= 2
     THEN: Node 31 (fall through)
     ELSE: Node 40
 Node 31
-  4: «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)] => «input_value[2:(length-1)]»
+  4: «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)] => [y => «input_value[2:(length-1)]»] y
     FETCH «input_value[2:(length-1)]» := «input_value»[2:(length(«input_value»)-1)]
     NEXT: Node 32 (fall through)
 Node 32
-  4: true => «input_value[2:(length-1)]»
-    MATCH 4 with value «input_value[2:(length-1)]»
+  4: true => [y => «input_value[2:(length-1)]»] y
+    MATCH 4 with value [y => «input_value[2:(length-1)]»] y
 Node 33
-  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  5: («input_value» isa Tuple && length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
   7: («input_value» isa Main.Rematch2Tests.A && (e).q2 && «where_1») => 7
   8: («input_value» isa Main.Rematch2Tests.B && (e).q3 && «where_2») => 8
@@ -235,35 +238,35 @@ Node 33
     THEN: Node 34 (fall through)
     ELSE: Node 42
 Node 34
-  5: (length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  5: (length(«input_value») && «length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
     FETCH «length(input_value)» := length(«input_value»)
     NEXT: Node 35 (fall through)
 Node 35
-  5: («length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  5: («length(input_value)» >= 2 && «input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
     TEST «length(input_value)» >= 2
     THEN: Node 36 (fall through)
     ELSE: Node 40
 Node 36
-  5: («input_value»[-1] && (e).q1 && «where_0») => «input_value[-1]»
+  5: («input_value»[-1] && (e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
     FETCH «input_value[-1]» := «input_value»[-1]
     NEXT: Node 37 (fall through)
 Node 37
-  5: ((e).q1 && «where_0») => «input_value[-1]»
+  5: ((e).q1 && «where_0») => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
     FETCH «where_0» := (e).q1
     NEXT: Node 38 (fall through)
 Node 38
-  5: «where_0» => «input_value[-1]»
+  5: «where_0» => [z => «input_value[-1]»] z
   6: («input_value» == 6 || «input_value» == 7) => 6
     TEST «where_0»
     THEN: Node 39 (fall through)
     ELSE: Node 40
 Node 39
-  5: true => «input_value[-1]»
-    MATCH 5 with value «input_value[-1]»
+  5: true => [z => «input_value[-1]»] z
+    MATCH 5 with value [z => «input_value[-1]»] z
 Node 40
   6: («input_value» == 6 || «input_value» == 7) => 6
     TEST «input_value» == 6
@@ -356,24 +359,26 @@ Node 57
 end # of automaton
 """
 @testset "Tests for node coverage" begin
-    devnull = IOBuffer()
-    Rematch2.@match2_dumpall devnull e begin
-        1                            => 1
-        Foo(x, x)                    => 2
-        y::D                         => 3
-        [x, y..., z]                 => y
-        (x, y..., z) where e.q1      => z
-        6 || 7                       => 6
-        (x::A) where e.q2            => 7
-        (x::B) where e.q3            => 8
-        (x::C) where e.q4            => 9
-        Foo(x, 2) where f1(x)            => 1
-        Foo(1, y) where f2(y)            => 2
-        Foo(x, y) where (f1(x) && f2(y)) => 3
-    end
-    actual = String(take!(devnull))
-    for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
-        @test a == e
+    @testset "exercise dumpall 1" begin
+        devnull = IOBuffer()
+        Rematch2.@match2_dumpall devnull e begin
+            1                            => 1
+            Foo(x, x)                    => 2
+            y::D                         => 3
+            [x, y..., z]                 => y
+            (x, y..., z) where e.q1      => z
+            6 || 7                       => 6
+            (x::A) where e.q2            => 7
+            (x::B) where e.q3            => 8
+            (x::C) where e.q4            => 9
+            Foo(x, 2) where f1(x)            => 1
+            Foo(1, y) where f2(y)            => 2
+            Foo(x, y) where (f1(x) && f2(y)) => 3
+        end
+        actual = String(take!(devnull))
+        for (a, e) in zip(split(actual, '\n'), split(expected, '\n'))
+            @test a == e
+        end
     end
 
     @testset "exercise dumpall 2" begin
@@ -434,6 +439,25 @@ end # of automaton
         @test (@match2 :x begin
             @match_case pattern 1
         end) == 1
+    end
+
+    @testset "Some other normally unreachable code 1" begin
+        f = Rematch2.BoundFalsePattern(LineNumberNode(@__LINE__, @__FILE__), false)
+        @test_throws ErrorException Rematch2.next_action(f)
+
+        node = Rematch2.AutomatonNode(Rematch2.CasePartialResult[])
+        pattern = Trash(LineNumberNode(@__LINE__, @__FILE__))
+        binder = Rematch2.BinderContext(@__MODULE__)
+        @test_throws ErrorException Rematch2.make_next(node, pattern, binder)
+    end
+
+    @testset "Abstract types" begin
+        x = 2
+        @test (@match x begin
+            ::Abstract1 => 1
+            ::Abstract2 => 2
+            _ => 3
+        end) == 3
     end
 
 end # @testset "Tests that add code coverage"

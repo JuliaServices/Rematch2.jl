@@ -201,8 +201,8 @@ function bind_pattern!(
 
     elseif !(source isa Expr || source isa Symbol)
         # a constant
-        pattern = BoundEqualValueTestPattern(
-            location, source, input, source, ImmutableDict{Symbol, Symbol}())
+        bound_expression = BoundExpression(location, source)
+        pattern = BoundEqualValueTestPattern(input, bound_expression)
 
     elseif is_expr(source, :macrocall) ||
         is_expr(source, :quote) ||
@@ -211,15 +211,14 @@ function bind_pattern!(
         # we should really match on their structure.  We might treat regular expressions
         # specially, handle interpolation inside, etc.
         # See #6, #30, #31, #32
-        pattern = BoundEqualValueTestPattern(
-            location, source, input, source, ImmutableDict{Symbol, Symbol}())
+        bound_expression = BoundExpression(location, source)
+        pattern = BoundEqualValueTestPattern(input, bound_expression);
 
     elseif is_expr(source, :$)
         # an interpolation
         interpolation = source.args[1]
-        interpolation0, assigned0 = subst_patvars(interpolation, assigned)
-        pattern = BoundEqualValueTestPattern(
-            location, interpolation, input, interpolation0, assigned0)
+        bound_expression = bind_expression(location, interpolation, assigned)
+        pattern = BoundEqualValueTestPattern(input, bound_expression)
 
     elseif source isa Symbol
         # variable pattern (just a symbol)
@@ -227,9 +226,9 @@ function bind_pattern!(
         if haskey(assigned, varsymbol)
             # previously introduced variable.  Get the symbol holding its value
             var_value = assigned[varsymbol]
-            pattern = BoundEqualValueTestPattern(
-                location, source, input, var_value,
-                ImmutableDict{Symbol, Symbol}(varsymbol, var_value))
+            bound_expression = BoundExpression(
+                location, source, ImmutableDict{Symbol, Symbol}(varsymbol, var_value))
+            pattern = BoundEqualValueTestPattern(input, bound_expression)
         else
             # this patterns assigns the variable.
             assigned = ImmutableDict{Symbol, Symbol}(assigned, varsymbol, input)
@@ -348,15 +347,17 @@ function bind_pattern!(
             if v1 == v2
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, v1)
             else
-                # Every phi gets its own distinct variable.  We do not share them
-                # between patterns.
+                # Every phi gets its own distinct variable.  That ensures we do not
+                # share them between patterns.
                 temp = gensym(string("phi_", key), binder)
                 if v1 != temp
-                    save = BoundFetchExpressionPattern(location, source, v1, ImmutableDict(key => v1), temp, Any)
+                    bound_expression = BoundExpression(location, v1, ImmutableDict{Symbol, Symbol}(key, v1))
+                    save = BoundFetchExpressionPattern(bound_expression, temp, Any)
                     bp1 = BoundAndPattern(location, source, BoundPattern[bp1, save])
                 end
                 if v2 != temp
-                    save = BoundFetchExpressionPattern(location, source, v2, ImmutableDict(key => v2), temp, Any)
+                    bound_expression = BoundExpression(location, v2, ImmutableDict{Symbol, Symbol}(key, v2))
+                    save = BoundFetchExpressionPattern(bound_expression, temp, Any)
                     bp2 = BoundAndPattern(location, source, BoundPattern[bp2, save])
                 end
                 assigned = ImmutableDict{Symbol, Symbol}(assigned, key, temp)
@@ -392,9 +393,8 @@ function bind_pattern!(
                 BoundRelationalTestPattern(
                     location, source, length_temp, :>=, length(subpatterns)-1)
             else
-                BoundEqualValueTestPattern(
-                    location, source, length_temp, length(subpatterns),
-                    ImmutableDict{Symbol, Symbol}())
+                bound_expression = BoundExpression(location, length(subpatterns))
+                BoundEqualValueTestPattern(length_temp, bound_expression)
             end
         push!(patterns, check_length)
 
@@ -500,8 +500,8 @@ function shred_where_clause(
         result_type = (inverted == (guard.head == :&&)) ? BoundOrPattern : BoundAndPattern
         return result_type(location, guard, BoundPattern[left, right])
     else
-        (guard0, assigned0) = subst_patvars(guard, assigned)
-        fetch = BoundFetchExpressionPattern(location, guard, guard0, assigned0, nothing, Any)
+        bound_expression = bind_expression(location, guard, assigned)
+        fetch = BoundFetchExpressionPattern(bound_expression, nothing, Any)
         temp = get_temp(binder, fetch)
         test = BoundWhereTestPattern(location, guard, temp, inverted)
         return BoundAndPattern(location, guard, BoundPattern[fetch, test])
@@ -509,24 +509,34 @@ function shred_where_clause(
 end
 
 #
-# Replace each pattern variable reference with the temporary variable holding the
-# value that corresponds to that pattern variable.
+# Produce a `BoundExpression` object for the given expression.  This is used to
+# determine the set of variable bindings that are used in the expression, and to
+# simplify code generation.
 #
-function subst_patvars(expr, assigned::ImmutableDict{Symbol, Symbol})
-    new_assigned = ImmutableDict{Symbol, Symbol}()
-    new_expr = MacroTools.postwalk(expr) do patvar
-        if patvar isa Symbol
-            tmpvar = get(assigned, patvar, nothing)
-            if tmpvar isa Symbol
-                if !haskey(new_assigned, patvar)
-                    new_assigned = ImmutableDict{Symbol, Symbol}(
-                        new_assigned, patvar, tmpvar)
-                end
-                # Prevent the variable from being assigned to in user code
-                return Expr(:block, tmpvar)
-            end
-        end
+function bind_expression(location::LineNumberNode, expr, assigned::ImmutableDict{Symbol, Symbol})
+    if is_expr(expr, :(...))
+        error("$(location.file):$(location.line): Splatting not supported in interpolation: `$expr`.")
+    end
+
+    # determine the variables *actually* used in the expression
+    used = Set{Symbol}()
+    MacroTools.postwalk(expr) do patvar
+        patvar isa Symbol && push!(used, patvar)
         patvar
     end
-    (new_expr, new_assigned)
+
+    # we sort the used variables by name so that we have a deterministic order
+    # that will make it more likely we can share the resulting expression.
+    used = sort(collect(intersect(keys(assigned), used)))
+
+    assignments = Expr(:block)
+    new_assigned = ImmutableDict{Symbol, Symbol}()
+    for v in used
+        tmp = get(assigned, v, nothing)
+        @assert tmp !== nothing
+        push!(assignments.args, Expr(:(=), v, tmp))
+        new_assigned = ImmutableDict(new_assigned, v => tmp)
+    end
+
+    return BoundExpression(location, expr, new_assigned)
 end
