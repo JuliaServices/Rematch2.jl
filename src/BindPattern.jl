@@ -71,11 +71,25 @@ end
 # Pretty-printing utilities helpful for displaying the decision automaton
 #
 pretty(io::IO, p::BoundPattern, binder::BinderContext) = pretty(io, p)
+function pretty(io::IO, p::BoundFetchPattern)
+    error("pretty-printing a BoundFetchPattern requires a BinderContext")
+end
+function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, binder::BinderContext)
+    op = (p isa BoundOrPattern) ? "||" : "&&"
+    print(io, "(")
+    first = true
+    for sp in p.subpatterns
+        first || print(io, " ", op, " ")
+        first = false
+        pretty(io, sp, binder)
+    end
+    print(io, ")")
+end
 function pretty(io::IO, p::BoundFetchPattern, binder::BinderContext)
     temp = get_temp(binder, p)
     pretty(io, temp)
     print(io, " := ")
-    pretty(io, p)
+    pretty_fetch(io, p)
 end
 function pretty(io::IO, s::Symbol)
     print(io, pretty_name(s))
@@ -94,7 +108,7 @@ function pretty(io::IO, expr::Expr)
     b = MacroTools.prewalk(MacroTools.rmlines, expr)
     c = MacroTools.prewalk(MacroTools.unblock, b)
     print(io, MacroTools.postwalk(c) do var
-        (var isa Symbol) ? FrenchName(var) : var
+        (var isa Symbol) ? Symbol(FrenchName(var)) : var
     end)
 end
 
@@ -193,25 +207,24 @@ function bind_pattern!(
         pattern = BoundTruePattern(location, source)
 
     elseif !(source isa Expr || source isa Symbol)
-        # a constant
-        bound_expression = BoundExpression(location, source)
-        pattern = BoundEqualValueTestPattern(input, bound_expression)
+        # a constant, e.g. a regular expression, version number, raw string, etc.
+        pattern = BoundIsMatchTestPattern(input, BoundExpression(location, source), false)
 
-    elseif is_expr(source, :macrocall) ||
-        is_expr(source, :quote) ||
-        (is_expr(source, :call) && source.args[1] == :Symbol) # the type `Symbol`
-        # Objects of Julia expression tree types.  We treat them as constants, but
-        # we should really match on their structure.  We might treat regular expressions
-        # specially, handle interpolation inside, etc.
-        # See #6, #30, #31, #32
-        bound_expression = BoundExpression(location, source)
-        pattern = BoundEqualValueTestPattern(input, bound_expression);
+    elseif is_expr(source, :macrocall)
+        # We permit custom string macros as long as they do not contain any unbound
+        # variables.  We accomplish that simply by expanding the macro.  Macros that
+        # interpolate, like lazy"", will fail because they produce a `call` rather
+        # than an object.  Also, we permit users to define macros that expand to patterns.
+        while is_expr(source, :macrocall)
+            source = macroexpand(binder.mod, source; recursive = false)
+        end
+        (pattern, assigned) = bind_pattern!(location, source, input, binder, assigned)
 
     elseif is_expr(source, :$)
         # an interpolation
         interpolation = source.args[1]
         bound_expression = bind_expression(location, interpolation, assigned)
-        pattern = BoundEqualValueTestPattern(input, bound_expression)
+        pattern = BoundIsMatchTestPattern(input, bound_expression, false)
 
     elseif source isa Symbol
         # variable pattern (just a symbol)
@@ -221,7 +234,9 @@ function bind_pattern!(
             var_value = assigned[varsymbol]
             bound_expression = BoundExpression(
                 location, source, ImmutableDict{Symbol, Symbol}(varsymbol, var_value))
-            pattern = BoundEqualValueTestPattern(input, bound_expression)
+            pattern = BoundIsMatchTestPattern(
+                input, bound_expression,
+                true) # force an equality check
         else
             # this patterns assigns the variable.
             assigned = ImmutableDict{Symbol, Symbol}(assigned, varsymbol, input)
@@ -294,10 +309,15 @@ function bind_pattern!(
             end
 
             field_type = nothing
-            for (fname, ftype) in zip(Base.fieldnames(bound_type), Base.fieldtypes(bound_type))
-                if fname == field_name
-                    field_type = ftype
-                    break
+            if field_name == fieldnames(Symbol)[1]
+                # special case Symbol's hypothetical name field.
+                field_type = String
+            else
+                for (fname, ftype) in zip(Base.fieldnames(bound_type), Base.fieldtypes(bound_type))
+                    if fname == field_name
+                        field_type = ftype
+                        break
+                    end
                 end
             end
             @assert field_type !== nothing
@@ -386,7 +406,7 @@ function bind_pattern!(
                     location, source, length_temp, :>=, length(subpatterns)-1)
             else
                 bound_expression = BoundExpression(location, length(subpatterns))
-                BoundEqualValueTestPattern(length_temp, bound_expression)
+                BoundIsMatchTestPattern(length_temp, bound_expression, true)
             end
         push!(patterns, check_length)
 
@@ -420,17 +440,25 @@ function bind_pattern!(
         pattern1 = shred_where_clause(guard, false, location, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
+    elseif is_expr(source, :call, 3) && source.args[1] == :(:)
+        # A range pattern.  We depend on the Range API to make sense of it.
+        lower = source.args[2]
+        upper = source.args[3]
+        if upper isa Expr || upper isa Symbol || lower isa Expr || lower isa Symbol
+            error("$(location.file):$(location.line): Unregognized pattern syntax `$(pretty(lower)):$(pretty(upper))`.")
+        end
+        pattern = BoundIsMatchTestPattern(input, BoundExpression(location, source), false)
+
     else
-        error("$(location.file):$(location.line): Unregognized pattern syntax `$source`.")
+        error("$(location.file):$(location.line): Unregognized pattern syntax `$(pretty(source))`.")
     end
 
     return (pattern, assigned)
 end
 
 function push_pattern!(patterns::Vector{BoundPattern}, binder::BinderContext, pat::BoundFetchPattern)
-    temp = get_temp(binder, pat)
     push!(patterns, pat)
-    temp
+    get_temp(binder, pat)
 end
 
 function split_where(T, location)
@@ -469,6 +497,9 @@ function fieldnames(type::Type)
     # is not exported, so it should not conflict with Base.fieldnames.
     Base.fieldnames(type)
 end
+# For the purposes of pattern-matching, we pretend that `Symbol` has a single field.
+const symbol_field_name = Symbol("«name(::Symbol)»")
+fieldnames(::Type{Symbol}) = (symbol_field_name,)
 
 #
 # Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,
@@ -501,6 +532,16 @@ function shred_where_clause(
 end
 
 #
+# getvars
+#
+# get all symbols in an expression
+#
+getvars(e)         = Set{Symbol}()
+getvars(e::Symbol) = startswith(string(e), '@') ? Set{Symbol}() : push!(Set{Symbol}(), e)
+getvars(e::Expr)   = getvars(is_expr(e, :call) ? e.args[2:end] : e.args)
+getvars(es::AbstractArray) = union(Set{Symbol}(), [getvars(e) for e in es]...)
+
+#
 # Produce a `BoundExpression` object for the given expression.  This is used to
 # determine the set of variable bindings that are used in the expression, and to
 # simplify code generation.
@@ -511,11 +552,7 @@ function bind_expression(location::LineNumberNode, expr, assigned::ImmutableDict
     end
 
     # determine the variables *actually* used in the expression
-    used = Set{Symbol}()
-    MacroTools.postwalk(expr) do patvar
-        patvar isa Symbol && push!(used, patvar)
-        patvar
-    end
+    used = getvars(expr)
 
     # we sort the used variables by name so that we have a deterministic order
     # that will make it more likely we can share the resulting expression.

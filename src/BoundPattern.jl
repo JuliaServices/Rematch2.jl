@@ -25,6 +25,11 @@ abstract type BoundTestPattern <: BoundPattern end
 
 # Functions for pretty-printing patterns and the decision automaton
 pretty(io::IO, x::Any) = print(io, x)
+function pretty(x::Any)
+    io = IOBuffer()
+    pretty(io, x)
+    String(take!(io))
+end
 
 # A pattern that always matches
 struct BoundTruePattern <: BoundPattern
@@ -102,24 +107,31 @@ end
 # A pattern like `1`, `$(expression)`, or `x` where `x` is already bound.
 # Note that for a pattern variable `x` that is previously bound, `x` means
 # the same thing as `$x` or `$(x)`.  We test a constant pattern by applying
-# `isequal(input_value, pattern.value)`
-struct BoundEqualValueTestPattern <: BoundTestPattern
+# `ismatch(pattern.value, input_value)`
+struct BoundIsMatchTestPattern <: BoundTestPattern
     input::Symbol
     bound_expression::BoundExpression
+    # `force_equality` is to force the use of `isequal` instead of `ismatch`
+    # (for when pattern variables are reused in multiple places)
+    force_equality::Bool
 end
-function Base.hash(a::BoundEqualValueTestPattern, h::UInt64)
-    hash((a.input, a.bound_expression, 0x7e92a644c831493f), h)
+function Base.hash(a::BoundIsMatchTestPattern, h::UInt64)
+    hash((a.input, a.bound_expression, a.force_equality, 0x7e92a644c831493f), h)
 end
-function Base.:(==)(a::BoundEqualValueTestPattern, b::BoundEqualValueTestPattern)
-    a.input == b.input && isequal(a.bound_expression, b.bound_expression)
+function Base.:(==)(a::BoundIsMatchTestPattern, b::BoundIsMatchTestPattern)
+    a.input == b.input &&
+    a.force_equality == b.force_equality &&
+    isequal(a.bound_expression, b.bound_expression)
 end
-function pretty(io::IO, p::BoundEqualValueTestPattern)
-    pretty(io, p.input)
-    print(io, " == ")
+function pretty(io::IO, p::BoundIsMatchTestPattern)
+    print(io, p.force_equality ? "isequal(" : "@ismatch(")
     pretty(io, p.bound_expression)
+    print(io, ", ")
+    pretty(io, p.input)
+    print(io, ")")
 end
-loc(p::BoundEqualValueTestPattern) = loc(p.bound_expression)
-source(p::BoundEqualValueTestPattern) = source(p.bound_expression)
+loc(p::BoundIsMatchTestPattern) = loc(p.bound_expression)
+source(p::BoundIsMatchTestPattern) = source(p.bound_expression)
 
 # A pattern that compares the input, which must be an Integer, using a Relational
 # operator, to a given value.  Used to ensure that list patterns match against a
@@ -255,17 +267,6 @@ Base.hash(a::BoundAndPattern, h::UInt64) = hash(a._cached_hash, h)
 function Base.:(==)(a::BoundAndPattern, b::BoundAndPattern)
     a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
-function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern})
-    op = (p isa BoundOrPattern) ? "||" : "&&"
-    print(io, "(")
-    first = true
-    for sp in p.subpatterns
-        first || print(io, " ", op, " ")
-        first = false
-        pretty(io, sp)
-    end
-    print(io, ")")
-end
 
 # Fetch a field of the input into into a fresh temporary synthetic variable.
 # Used to decompose patterns that match subfields.  Treated as always "true"
@@ -287,7 +288,7 @@ end
 function Base.:(==)(a::BoundFetchFieldPattern, b::BoundFetchFieldPattern)
     a.input == b.input && a.field_name == b.field_name
 end
-function pretty(io::IO, p::BoundFetchFieldPattern)
+function pretty_fetch(io::IO, p::BoundFetchFieldPattern)
     pretty(io, p.input)
     print(io, ".", p.field_name)
 end
@@ -310,7 +311,7 @@ end
 function Base.:(==)(a::BoundFetchIndexPattern, b::BoundFetchIndexPattern)
     a.input == b.input && a.index == b.index
 end
-function pretty(io::IO, p::BoundFetchIndexPattern)
+function pretty_fetch(io::IO, p::BoundFetchIndexPattern)
     pretty(io, p.input)
     print(io, "[", p.index, "]")
 end
@@ -330,7 +331,7 @@ end
 function Base.:(==)(a::BoundFetchRangePattern, b::BoundFetchRangePattern)
     a.input == b.input && a.first_index == b.first_index && a.from_end == b.from_end
 end
-function pretty(io::IO, p::BoundFetchRangePattern)
+function pretty_fetch(io::IO, p::BoundFetchRangePattern)
     pretty(io, p.input)
     print(io, "[", p.first_index, ":(length(", pretty_name(p.input), ")-", p.from_end, ")]")
 end
@@ -348,7 +349,7 @@ end
 function Base.:(==)(a::BoundFetchLengthPattern, b::BoundFetchLengthPattern)
     a.input == b.input
 end
-function pretty(io::IO, p::BoundFetchLengthPattern)
+function pretty_fetch(io::IO, p::BoundFetchLengthPattern)
     print(io, "length(")
     pretty(io, p.input)
     print(io, ")")
@@ -372,7 +373,7 @@ end
 function Base.:(==)(a::BoundFetchExpressionPattern, b::BoundFetchExpressionPattern)
     a.bound_expression == b.bound_expression && a.key == b.key
 end
-function pretty(io::IO, p::BoundFetchExpressionPattern)
+function pretty_fetch(io::IO, p::BoundFetchExpressionPattern)
     pretty(io, p.bound_expression)
 end
 loc(p::BoundFetchExpressionPattern) = loc(p.bound_expression)
