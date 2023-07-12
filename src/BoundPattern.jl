@@ -78,16 +78,20 @@ loc(p::BoundExpression) = p.location
 source(p::BoundExpression) = p.source
 function pretty(io::IO, e::BoundExpression)
     if !isempty(e.assignments)
-        print(io, "[")
-        for (i, (k, v)) in enumerate(e.assignments)
-            i > 1 && print(io, ", ")
-            pretty(io, k)
-            print(io, " => ")
-            pretty(io, v)
-        end
-        print(io, "] ")
+        pretty(io, e.assignments)
+        print(io, " ")
     end
     pretty(io, e.source)
+end
+function pretty(io::IO, assignments::ImmutableDict{Symbol, Symbol})
+    print(io, "[")
+    for (i, (k, v)) in enumerate(assignments)
+        i > 1 && print(io, ", ")
+        pretty(io, k)
+        print(io, " => ")
+        pretty(io, v)
+    end
+    print(io, "]")
 end
 function code(e::BoundExpression)
     value = Expr(:block, e.location, e.source)
@@ -210,7 +214,6 @@ struct BoundOrPattern <: BoundPattern
     end
 end
 Base.hash(a::BoundOrPattern, h::UInt64) = hash(a._cached_hash, h)
-Base.hash(a::BoundOrPattern) = a._cached_hash
 function Base.:(==)(a::BoundOrPattern, b::BoundOrPattern)
     a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
@@ -249,7 +252,6 @@ struct BoundAndPattern <: BoundPattern
     end
 end
 Base.hash(a::BoundAndPattern, h::UInt64) = hash(a._cached_hash, h)
-Base.hash(a::BoundAndPattern) = a._cached_hash
 function Base.:(==)(a::BoundAndPattern, b::BoundAndPattern)
     a._cached_hash == b._cached_hash && a.subpatterns == b.subpatterns
 end
@@ -388,3 +390,60 @@ is_refutable(pattern::BoundOrPattern) = all(is_refutable, pattern.subpatterns)
 
 # Pattern is definitely true
 is_irrefutable(pattern::BoundPattern) = !is_refutable(pattern)
+
+#
+# A data structure representing information about a single match case.
+# Initially, it represents just what was in source.  However, during construction of
+# the decision automaton, the pattern represents only the remaining operations that
+# must be performed to decide if the pattern matches.
+#
+struct BoundCase
+    # The index of the case, starting with 1 for the first => in the @match
+    case_number::Int
+
+    # Its location for error reporting purposes
+    location::LineNumberNode
+
+    # Its source for error reporting
+    pattern_source
+
+    # The operations (or remaining operations) required to perform the match.
+    # In a node of the decision automaton, some operations may have already been done,
+    # and they are removed from the bound pattern in subsequent nodes of the automaton.
+    # When the bound pattern is simply `true`, the case's pattern has matched.
+    pattern::BoundPattern
+
+    # The user's result expression for this case.
+    result_expression::BoundExpression
+
+    _cached_hash::UInt64
+    function BoundCase(
+        case_number::Int,
+        location::LineNumberNode,
+        pattern_source,
+        pattern::BoundPattern,
+        result_expression::BoundExpression)
+        _hash = hash((case_number, pattern, result_expression), 0x1cdd9657bfb1e645)
+        new(case_number, location, pattern_source, pattern, result_expression, _hash)
+    end
+end
+function with_pattern(
+    case::BoundCase,
+    new_pattern::BoundPattern)
+    return BoundCase(
+        case.case_number,
+        case.location,
+        case.pattern_source,
+        new_pattern,
+        case.result_expression)
+end
+function Base.hash(case::BoundCase, h::UInt64)
+    hash(case._cached_hash, h)
+end
+function Base.:(==)(a::BoundCase, b::BoundCase)
+    a._cached_hash == b._cached_hash &&
+    isequal(a.case_number, b.case_number) &&
+        isequal(a.pattern, b.pattern) &&
+        isequal(a.result_expression, b.result_expression)
+end
+loc(case::BoundCase) = case.location

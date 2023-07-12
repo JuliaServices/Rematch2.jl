@@ -1,29 +1,4 @@
 #
-# Bind a case, producing a case partial result.
-#
-function bind_case(
-    case_number::Int,
-    location::LineNumberNode,
-    case,
-    predeclared_temps,
-    binder::BinderContext)::CasePartialResult
-    while case isa Expr && case.head == :macrocall
-        # expand top-level macros only
-        case = macroexpand(binder.mod, case, recursive=false)
-    end
-
-    is_expr(case, :call, 3) && case.args[1] == :(=>) ||
-        error("$(location.file):$(location.line): Unrecognized @match2 case syntax: `$case`.")
-    pattern = case.args[2]
-    result = case.args[3]
-    (pattern, result) = adjust_case_for_return_macro(binder.mod, location, pattern, result, predeclared_temps)
-    bound_pattern, assigned = bind_pattern!(
-        location, pattern, binder.input_variable, binder, ImmutableDict{Symbol, Symbol}())
-    result_expression = bind_expression(location, result, assigned)
-    return CasePartialResult(case_number, location, pattern, bound_pattern, result_expression)
-end
-
-#
 # Build the decision automaton and return its entry point.
 #
 function build_automaton_core(
@@ -32,12 +7,12 @@ function build_automaton_core(
     location::LineNumberNode,
     predeclared_temps,
     binder::BinderContext)::AutomatonNode
-    cases = CasePartialResult[]
+    cases = BoundCase[]
     for case in source_cases
         if case isa LineNumberNode
             location = case
         else
-            bound_case::CasePartialResult = bind_case(length(cases) + 1, location, case, predeclared_temps, binder)
+            bound_case::BoundCase = bind_case(length(cases) + 1, location, case, predeclared_temps, binder)
             bound_case = simplify(bound_case, binder)
             push!(cases, bound_case)
         end
@@ -52,7 +27,7 @@ function build_automaton_core(
     # If the value had a type annotation, then we can use that to
     # narrow down the cases that we need to consider.
     input_type = Any
-    if value isa Expr && value.head == :(::) && length(value.args) == 2
+    if is_expr(value, :(::), 2)
         type = value.args[2]
         try
             input_type = bind_type(location, type, binder.input_variable, binder)
@@ -75,7 +50,7 @@ function build_automaton_core(
             set_next!(node, binder)
             @assert node.action !== nothing
             @assert node.next !== nothing
-            if node.action isa CasePartialResult
+            if node.action isa BoundCase
                 push!(reachable, node.action.case_number)
             end
             union!(work_queue, successors(node))
@@ -120,7 +95,7 @@ function generate_code(top_down_nodes::Vector{DeduplicatedAutomatonNode}, @nospe
             push!(emit, :(@label $(labels[node])))
         end
         action = node.action
-        if action isa CasePartialResult
+        if action isa BoundCase
             # We've matched a pattern.
             push!(emit, loc(action))
             push!(emit, :($result_variable = $(code(action.result_expression))))
@@ -159,14 +134,14 @@ end
 # Build the whole decision automaton from the syntax for the value and body
 #
 function build_automaton(location::LineNumberNode, mod::Module, @nospecialize(value), body)
-    if body isa Expr && body.head == :call && body.args[1] == :(=>)
+    if is_case(body)
         # previous version of @match supports `@match(expr, pattern => value)`
         body = Expr(:block, body)
     end
-    if body isa Expr && body.head == :block
+    if is_expr(body, :block)
         source_cases = body.args
     else
-        error("$(location.file):$(location.line): Unrecognized @match2 block syntax: `$body`.")
+        error("$(location.file):$(location.line): Unrecognized @match block syntax: `$body`.")
     end
 
     binder = BinderContext(mod)
@@ -192,7 +167,7 @@ function set_next!(node::AutomatonNode, binder::BinderContext)
     @assert node.action === nothing
     @assert node.next === nothing
 
-    action::Union{CasePartialResult, BoundPattern, Expr} = next_action(node, binder)
+    action::Union{BoundCase, BoundPattern, Expr} = next_action(node, binder)
     next::Union{Tuple{}, Tuple{AutomatonNode}, Tuple{AutomatonNode, AutomatonNode}} =
         make_next(node, action, binder)
     node.action = action
@@ -214,7 +189,7 @@ end
 #
 function next_action(
     node::AutomatonNode,
-    binder::BinderContext)::Union{CasePartialResult, BoundPattern, Expr}
+    binder::BinderContext)::Union{BoundCase, BoundPattern, Expr}
     if isempty(node.cases)
         # cases have been exhausted.  Return code to throw a match failure.
         return :($throw($MatchFailure($(binder.input_variable))))
@@ -240,7 +215,7 @@ end
 #
 function make_next(
     node::AutomatonNode,
-    action::Union{CasePartialResult, Expr},
+    action::Union{BoundCase, Expr},
     binder::BinderContext)
     return ()
 end
@@ -293,10 +268,10 @@ function remove(action::BoundTestPattern, sense::Bool, node::AutomatonNode, bind
     return AutomatonNode(cases)
 end
 
-function remove(action::BoundTestPattern, action_result::Bool, case::CasePartialResult, binder::BinderContext)::CasePartialResult
+function remove(action::BoundTestPattern, action_result::Bool, case::BoundCase, binder::BinderContext)::BoundCase
     with_pattern(case, remove(action, action_result, case.pattern, binder))
 end
-function remove(action::BoundFetchPattern, case::CasePartialResult, binder::BinderContext)::CasePartialResult
+function remove(action::BoundFetchPattern, case::BoundCase, binder::BinderContext)::BoundCase
     with_pattern(case, remove(action, case.pattern, binder))
 end
 
@@ -358,11 +333,14 @@ function remove(action::BoundTypeTestPattern, action_result::Bool, pattern::Boun
         elseif pattern.type <: action.type
             # we are asking about a narrower type - result unknown
             return pattern
-        elseif typeintersect(pattern.type, action.type) == Base.Bottom
+        else
+            # Since Julia does not support multiple inheritance, if the two types
+            # are not related by inheritance, then no types that implement both will
+            # ever come into existence.
+            @assert typeintersect(pattern.type, action.type) == Base.Bottom
+
             # their intersection is empty, so it cannot be pattern.type
             return BoundFalsePattern(loc(pattern), source(pattern))
-        else
-            return pattern
         end
     else
         # the type test failed.
@@ -381,7 +359,7 @@ end
 #
 # Simplify a case by removing fetch operations whose results are not used.
 #
-function simplify(case::CasePartialResult, binder::BinderContext)::CasePartialResult
+function simplify(case::BoundCase, binder::BinderContext)::BoundCase
     required_temps = Set(values(case.result_expression.assignments))
     simplified_pattern = simplify(case.pattern, required_temps, binder)
     return with_pattern(case, simplified_pattern)
@@ -429,7 +407,8 @@ end
 function simplify(pattern::BoundAndPattern, required_temps::Set{Symbol}, binder::BinderContext)::BoundPattern
     subpatterns = BoundPattern[]
     for p in reverse(pattern.subpatterns)
-        push!(subpatterns, simplify(p, required_temps, binder))
+        simplified = simplify(p, required_temps, binder)
+        push!(subpatterns, simplified)
     end
     BoundAndPattern(loc(pattern), source(pattern), BoundPattern[reverse(subpatterns)...])
 end
@@ -497,6 +476,9 @@ end
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
     top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(location, mod, value, body)
     result = generate_code(top_down_nodes, value, location, binder)
+    @assert is_expr(result, :block)
+
+    # We use a `let` to ensure consistent closed scoping
     result = Expr(:let, Expr(:block, predeclared_temps...), result)
     esc(result)
 end

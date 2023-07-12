@@ -1,6 +1,6 @@
 module Rematch2Tests
 
-using Rematch2: @match, @match2, MatchFailure, Rematch2, @match_fail, @match_return
+using Rematch2
 using ReTest
 using Random
 using MacroTools: MacroTools
@@ -12,6 +12,7 @@ include("coverage.jl")
 include("nontrivial.jl")
 include("topological.jl")
 include("match_return.jl")
+include("test_ismatch.jl")
 
 retest(Rematch2Tests)
 

@@ -441,14 +441,29 @@ end # of automaton
         end) == 1
     end
 
+    @testset "Some unlikely code" begin
+        @test (@match2 1 begin
+            ::Int && ::Int => 1
+        end) == 1
+
+        @test_throws LoadError @eval (@match2 true begin
+            x::Bool, if x; true; end => 1
+        end)
+    end
+
     @testset "Some other normally unreachable code 1" begin
         f = Rematch2.BoundFalsePattern(LineNumberNode(@__LINE__, @__FILE__), false)
         @test_throws ErrorException Rematch2.next_action(f)
 
-        node = Rematch2.AutomatonNode(Rematch2.CasePartialResult[])
+        node = Rematch2.AutomatonNode(Rematch2.BoundCase[])
         pattern = Trash(LineNumberNode(@__LINE__, @__FILE__))
         binder = Rematch2.BinderContext(@__MODULE__)
         @test_throws ErrorException Rematch2.make_next(node, pattern, binder)
+
+        devnull = IOBuffer()
+        f = Rematch2.BoundFalsePattern(LineNumberNode(@__LINE__, @__FILE__), false)
+        Rematch2.pretty(devnull, f)
+        @test f == f
     end
 
     @testset "Abstract types" begin

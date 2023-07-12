@@ -1,12 +1,8 @@
-using Base: is_expr
-
-#
 #
 # Persistent data that we use across different patterns, to ensure the same computations
 # are always represented by the same synthetic variables.  We use this during lowering
 # and also during code generation, since it holds some of the context required during code
 # generation (such as assertions and assignments)
-#
 #
 struct BinderContext
     # The module containing the pattern, in which types appearing in the
@@ -109,13 +105,10 @@ function simple_name(s::Symbol)
     simple_name(string(s))
 end
 function simple_name(n::String)
-    if startswith(n, "##")
-        n1 = n[3:length(n)]
-        last = findlast('#', n1)
-        (last isa Int) ? n1[1:(last-1)] : n1
-    else
-        n
-    end
+    @assert startswith(n, "##")
+    n1 = n[3:end]
+    last = findlast('#', n1)
+    isnothing(last) ? n1 : n1[1:prevind(n1, last)]
 end
 
 #
@@ -263,8 +256,7 @@ function bind_pattern!(
         T = source.args[1]
         subpatterns = source.args[2:length(source.args)]
         len = length(subpatterns)
-        named_fields = [pat.args[1] for pat in subpatterns
-                                    if (pat isa Expr) && pat.head == :kw]
+        named_fields = [pat.args[1] for pat in subpatterns if is_expr(pat, :kw)]
         named_count = length(named_fields)
         if named_count != length(unique(named_fields))
             error("$(location.file):$(location.line): Pattern `$source` has duplicate " *
@@ -400,7 +392,7 @@ function bind_pattern!(
 
         seen_splat = false
         for (i, subpattern) in enumerate(subpatterns)
-            if subpattern isa Expr && subpattern.head == :...
+            if is_expr(subpattern, :...)
                 @assert length(subpattern.args) == 1
                 @assert !seen_splat
                 seen_splat = true
@@ -444,7 +436,7 @@ end
 function split_where(T, location)
     type = T
     where_clause = nothing
-    while type isa Expr && type.head == :where
+    while is_expr(type, :where)
         where_clause = (where_clause === nothing) ? type.args[2] : :($(type.args[2]) && $where_clause)
         type = type.args[1]
     end
@@ -539,4 +531,70 @@ function bind_expression(location::LineNumberNode, expr, assigned::ImmutableDict
     end
 
     return BoundExpression(location, expr, new_assigned)
+end
+
+is_empty_block(x) = is_expr(x, :block) && all(a -> a isa LineNumberNode, x.args)
+
+#
+# Bind a case.
+#
+function bind_case(
+    case_number::Int,
+    location::LineNumberNode,
+    case,
+    predeclared_temps,
+    binder::BinderContext)::BoundCase
+    while true
+        # do some rewritings if needed
+        if is_expr(case, :macrocall)
+            # expand top-level macros only
+            case = macroexpand(binder.mod, case, recursive=false)
+
+        elseif is_expr(case, :tuple, 2) && is_case(case.args[2]) && is_expr(case.args[2].args[2], :if, 2)
+            # rewrite `pattern, if guard end => result`, which parses as
+            # `pattern, (if guard end => result)`
+            # to `(pattern, if guard end) => result`
+            # so that the guard is part of the pattern.
+            pattern = case.args[1]
+            if_guard = case.args[2].args[2]
+            result = case.args[2].args[3]
+            case = :(($pattern, $if_guard) => $result)
+
+        elseif is_case(case)
+            # rewrite `(pattern, if guard end) => result`
+            # to `(pattern where guard) => result`
+            pattern = case.args[2]
+            if is_expr(pattern, :tuple, 2) && is_expr(pattern.args[2], :if, 2)
+                if_guard = pattern.args[2]
+                if !is_empty_block(if_guard.args[2])
+                    error("$(location.file):$(location.line): Unrecognized @match guard syntax: `$if_guard`.")
+                end
+                pattern = pattern.args[1]
+                guard = if_guard.args[1]
+                result = case.args[3]
+                case = :(($pattern where $guard) => $result)
+            end
+            break
+
+        else
+            error("$(location.file):$(location.line): Unrecognized @match case syntax: `$case`.")
+        end
+    end
+
+    @assert is_case(case)
+    pattern = case.args[2]
+    result = case.args[3]
+    (pattern, result) = adjust_case_for_return_macro(binder.mod, location, pattern, result, predeclared_temps)
+    bound_pattern, assigned = bind_pattern!(
+        location, pattern, binder.input_variable, binder, ImmutableDict{Symbol, Symbol}())
+    result_expression = bind_expression(location, result, assigned)
+    return BoundCase(case_number, location, pattern, bound_pattern, result_expression)
+end
+
+function pretty(io::IO, case::BoundCase, binder::BinderContext)
+    print(io, case.case_number, ": ")
+    pretty(io, case.pattern, binder)
+    print(io, " => ")
+    pretty(io, case.result_expression)
+    println(io)
 end
