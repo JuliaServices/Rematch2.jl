@@ -91,7 +91,7 @@ function adjust_case_for_return_macro(__module__, location, pattern, result, pre
             # :(@match_fail) -> :($value = $MatchFaulure; @goto $label)
             found_early_exit = true
             return Expr(:block, p.args[2], :($value = $MatchFailure), :(@goto $label))
-        elseif length(p.args) == 3 &&
+        elseif length(p.args) == 4 &&
             (p.args[1] == :var"@match" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match")) ||
              p.args[1] == :var"@match2" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match2")))
             # Nested uses of @match should be treated as independent
