@@ -427,7 +427,7 @@ end # of automaton
         @test Rematch2.simplify(pattern, Set{Symbol}(), binder) isa Rematch2.BoundTruePattern
     end
 
-    @testset "trigger some normally unreachable code 2" begin
+    @testset "trigger some normally unreachable code 3" begin
         location = LineNumberNode(@__LINE__, @__FILE__)
         action = TrashPattern(location)
         result = Rematch2.BoundExpression(location, 2)
