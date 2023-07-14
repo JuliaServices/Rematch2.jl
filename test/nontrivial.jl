@@ -88,8 +88,10 @@ macro simplify_top(n, mac)
     end)
 end
 
-@simplify_top(1, Rematch2.@match(expr))
-@simplify_top(2, Rematch2.@match2(expr))
+# @simplify_top(0, Match.@match(expr))
+# @simplify_top(1, Rematch.@match(expr))
+@simplify_top(2, Rematch2.@match(expr))
+@simplify_top(3, Rematch2.@match2(expr))
 
 @testset "Check some complex cases" begin
 
@@ -127,31 +129,40 @@ end
     expected = Sub(Const(-63.0), Mul(Const(3.0), x))
 
     @testset "Check some simple cases" begin
-        @test simplify_top1(Sub(x, Neg(y))) == Add(x, y)
         @test simplify_top2(Sub(x, Neg(y))) == Add(x, y)
-        @test simplify_top1(Add(x, Neg(y))) == Sub(x, y)
+        @test simplify_top3(Sub(x, Neg(y))) == Add(x, y)
         @test simplify_top2(Add(x, Neg(y))) == Sub(x, y)
+        @test simplify_top3(Add(x, Neg(y))) == Sub(x, y)
     end
 
+    # dump(expr)
+    # dump(simplify0(expr))
+
     # @test simplify0(expr) == expected
-    @test simplify1(expr) == expected
+    # @test simplify1(expr) == expected
     @test simplify2(expr) == expected
+    @test simplify3(expr) == expected
 
     # function performance_test(expr::Expression)
-    #     GC.gc()
-    #     # println("===================== Rematch.@match")
-    #     # @time for i in 1:1000000
+    #     # GC.gc()
+    #     # println("===================== Match.@match")
+    #     # @time for i in 1:2000000
     #     #     simplify0(expr)
     #     # end
     #     GC.gc()
-    #     println("===================== Rematch2.@match")
-    #     @time for i in 1:1000000
+    #     println("===================== Rematch.@match")
+    #     @time for i in 1:2000000
     #         simplify1(expr)
     #     end
     #     GC.gc()
-    #     println("===================== Rematch2.@match2")
-    #     @time for i in 1:1000000
+    #     println("===================== Rematch2.@match")
+    #     @time for i in 1:2000000
     #         simplify2(expr)
+    #     end
+    #     GC.gc()
+    #     println("===================== Rematch2.@match2")
+    #     @time for i in 1:2000000
+    #         simplify3(expr)
     #     end
     #     GC.gc()
     # end

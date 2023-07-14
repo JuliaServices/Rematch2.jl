@@ -4,7 +4,7 @@
 # expansion of the @match macro so we can use the known bindings
 # of types to generate more efficient node.
 
-@testset "@rematch tests" begin
+@testset "Rematch2.@match tests" begin
 
 @testset "Assignments in the value do not leak out" begin
     @match Foo(1, 2) begin
@@ -352,13 +352,19 @@ end
       v"1.2.0" => :ok
     end) == :ok
 
+    ###
+    ### We do not support `QuoteNode` or `Expr` in `@match` blocks like `Rematch.jl`.
+    ### There, they were treated as literals, but they could contain
+    ### interpolated expressions, which we would want to handle properly.
+    ### It would be nice to support some kind of pattern-matching on them.
+    ###
     # QuoteNodes
-    @test (@match :(:x) begin
-      :(:x) => :ok
-    end) == :ok
-    @test (@match :(:x+:y) begin
-      :(:x + :y) => :ok
-    end) == :ok
+    # @test (@match :(:x) begin
+    #   :(:x) => :ok
+    # end) == :ok
+    # @test (@match :(:x+:y) begin
+    #   :(:x + :y) => :ok
+    # end) == :ok
 end
 
 @testset "logical expressions with branches" begin
@@ -696,18 +702,33 @@ end
         @match n begin
             0      => "zero"
             1 || 2 => "one or two"
-            # TODO: support range patterns
-            # 3:10   => "three to ten"
+            3:10   => "three to ten"
             _      => "something else"
         end
     end
 
     @test num_match(0) == "zero"
     @test num_match(2) == "one or two"
-    # @test num_match(4) == "three to ten"
+    @test num_match(4) == "three to ten"
     @test num_match(12) == "something else"
     @test num_match("hi") == "something else"
     @test num_match('c') == "something else"
+
+    function char_match(c)
+        @match c begin
+            'A':'Z' => "uppercase"
+            'a':'z' => "lowercase"
+            '0':'9' => "number"
+            _       => "other"
+        end
+    end
+
+    @test char_match('M') == "uppercase"
+    @test char_match('n') == "lowercase"
+    @test char_match('8') == "number"
+    @test char_match(' ') == "other"
+    @test char_match("8") == "other"
+    @test char_match(8) == "other"
 
     # Interpolation of matches in quoted expressions
     test_interp(item) = @match item begin

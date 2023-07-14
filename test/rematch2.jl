@@ -23,7 +23,18 @@ macro check_is_identifier(x::Symbol)
     true
 end
 
-@testset "@rematch2 tests" begin
+@testset "Rematch2.@match2 tests" begin
+
+@testset "test the simplest form of regex matches, which are supported by Match.jl" begin
+    function is_ipv4_address(s)
+        @match s begin
+            r"(\d+)\.(\d+)\.(\d+)\.(\d+)" => true
+            _ => false
+        end
+    end
+    @test is_ipv4_address("192.168.0.5")
+    @test !is_ipv4_address("www.gafter.com")
+end
 
 @testset "Check that `,if condition end` guards are parsed properly" begin
     x = true
@@ -755,6 +766,13 @@ end
         @test q == "changed"
     end
 
+    @testset "disallow lazy strings in patterns due to their support of interpolation" begin
+        z=3
+        @test_throws LoadError (@eval @match2 z begin
+            lazy"$(z)" => 1
+            _ => 0
+        end)
+    end
 end
 
 @testset "ensure we use `isequal` and not `==`" begin
@@ -838,13 +856,19 @@ end
       v"1.2.0" => :ok
     end) == :ok
 
+    ###
+    ### We do not support `QuoteNode` or `Expr` in `@match` blocks like `Rematch.jl`.
+    ### There, they were treated as literals, but they could contain
+    ### interpolated expressions, which we would want to handle properly.
+    ### It would be nice to support some kind of pattern-matching on them.
+    ###
     # QuoteNodes
-    @test (@match2 :(:x) begin
-      :(:x) => :ok
-    end) == :ok
-    @test (@match2 :(:x+:y) begin
-      :(:x + :y) => :ok
-    end) == :ok
+    # @test (@match2 :(:x) begin
+    #   :(:x) => :ok
+    # end) == :ok
+    # @test (@match2 :(:x+:y) begin
+    #   :(:x + :y) => :ok
+    # end) == :ok
 end
 
 @testset "logical expressions with branches" begin
@@ -1178,15 +1202,14 @@ end
         @match2 n begin
             0      => "zero"
             1 || 2 => "one or two"
-            # TODO: support range patterns
-            # 3:10   => "three to ten"
+            3:10   => "three to ten"
             _      => "something else"
         end
     end
 
     @test num_match(0) == "zero"
     @test num_match(2) == "one or two"
-    # @test num_match(4) == "three to ten"
+    @test num_match(4) == "three to ten"
     @test num_match(12) == "something else"
     @test num_match("hi") == "something else"
     @test num_match('c') == "something else"
