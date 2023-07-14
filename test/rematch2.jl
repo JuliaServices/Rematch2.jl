@@ -856,6 +856,12 @@ end
       v"1.2.0" => :ok
     end) == :ok
 
+    ###
+    ### We do not support `QuoteNode` or `Expr` in `@match` blocks like `Rematch.jl`.
+    ### There, they were treated as literals, but they could contain
+    ### interpolated expressions, which we would want to handle properly.
+    ### It would be nice to support some kind of pattern-matching on them.
+    ###
     # QuoteNodes
     # @test (@match2 :(:x) begin
     #   :(:x) => :ok

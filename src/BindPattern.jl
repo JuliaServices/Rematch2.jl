@@ -440,12 +440,15 @@ function bind_pattern!(
         pattern1 = shred_where_clause(guard, false, location, binder, assigned)
         pattern = BoundAndPattern(location, source, BoundPattern[pattern0, pattern1])
 
-    elseif is_expr(source, :call, 3) && source.args[1] == :(:)
+    elseif is_expr(source, :call) && source.args[1] == :(:) && length(source.args) in 3:4
         # A range pattern.  We depend on the Range API to make sense of it.
         lower = source.args[2]
         upper = source.args[3]
-        if upper isa Expr || upper isa Symbol || lower isa Expr || lower isa Symbol
-            error("$(location.file):$(location.line): Unregognized pattern syntax `($(pretty(lower))):($(pretty(upper)))`.")
+        step = (length(source.args) == 4) ? source.args[4] : nothing
+        if upper isa Expr || upper isa Symbol ||
+            lower isa Expr || lower isa Symbol ||
+            step isa Expr || step isa Symbol
+            error("$(location.file):$(location.line): Non-constant range pattern: `$source`.")
         end
         pattern = BoundIsMatchTestPattern(input, BoundExpression(location, source), false)
 
