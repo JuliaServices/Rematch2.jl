@@ -1,4 +1,3 @@
-using Rematch2: topological_sort
 
 # Given an array of node descriptions, each of which is a node name,
 # and the name of successor nodes, construct a graph.  Return a successor

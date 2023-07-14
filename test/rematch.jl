@@ -213,7 +213,7 @@ file = Symbol(@__FILE__)
                 @test ex isa LoadError
                 e = ex.error
                 @test e isa ErrorException
-                @test e.msg == "$file:$line: Unregognized pattern syntax `x + y`."
+                @test e.msg == "$file:$line: Unrecognized pattern syntax `x + y`."
             end
         end
     end

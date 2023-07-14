@@ -67,54 +67,6 @@ function bind_type(location, T, input, binder)
     bound_type
 end
 
-#
-# Pretty-printing utilities helpful for displaying the decision automaton
-#
-pretty(io::IO, p::BoundPattern, binder::BinderContext) = pretty(io, p)
-function pretty(io::IO, p::BoundFetchPattern)
-    error("pretty-printing a BoundFetchPattern requires a BinderContext")
-end
-function pretty(io::IO, p::Union{BoundOrPattern, BoundAndPattern}, binder::BinderContext)
-    op = (p isa BoundOrPattern) ? "||" : "&&"
-    print(io, "(")
-    first = true
-    for sp in p.subpatterns
-        first || print(io, " ", op, " ")
-        first = false
-        pretty(io, sp, binder)
-    end
-    print(io, ")")
-end
-function pretty(io::IO, p::BoundFetchPattern, binder::BinderContext)
-    temp = get_temp(binder, p)
-    pretty(io, temp)
-    print(io, " := ")
-    pretty_fetch(io, p)
-end
-function pretty(io::IO, s::Symbol)
-    print(io, pretty_name(s))
-end
-function pretty_name(s::Symbol)
-    s = string(s)
-    if startswith(s, "##")
-        string("«", simple_name(s), "»")
-    else
-        s
-    end
-end
-struct FrenchName; s::Symbol; end
-Base.show(io::IO, x::FrenchName) = print(io, pretty_name(x.s))
-function pretty(io::IO, expr::Expr)
-    b = MacroTools.prewalk(MacroTools.rmlines, expr)
-    c = MacroTools.prewalk(MacroTools.unblock, b)
-    print(io, MacroTools.postwalk(c) do var
-        (var isa Symbol) ? Symbol(FrenchName(var)) : var
-    end)
-end
-
-#
-# Get the "base" name of a symbol (remove synthetic ## additions)
-#
 function simple_name(s::Symbol)
     simple_name(string(s))
 end
@@ -453,7 +405,7 @@ function bind_pattern!(
         pattern = BoundIsMatchTestPattern(input, BoundExpression(location, source), false)
 
     else
-        error("$(location.file):$(location.line): Unregognized pattern syntax `$(pretty(source))`.")
+        error("$(location.file):$(location.line): Unrecognized pattern syntax `$(pretty(source))`.")
     end
 
     return (pattern, assigned)
@@ -629,12 +581,4 @@ function bind_case(
         location, pattern, binder.input_variable, binder, ImmutableDict{Symbol, Symbol}())
     result_expression = bind_expression(location, result, assigned)
     return BoundCase(case_number, location, pattern, bound_pattern, result_expression)
-end
-
-function pretty(io::IO, case::BoundCase, binder::BinderContext)
-    print(io, case.case_number, ": ")
-    pretty(io, case.pattern, binder)
-    print(io, " => ")
-    pretty(io, case.result_expression)
-    println(io)
 end

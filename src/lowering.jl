@@ -10,6 +10,12 @@ function assignments(assigned::ImmutableDict{Symbol, Symbol})
     return (:($patvar = $resultsym) for (patvar, resultsym) in assigned)
 end
 
+function code(e::BoundExpression)
+    value = Expr(:block, e.location, e.source)
+    assignments = Expr(:block, (:($k = $v) for (k, v) in e.assignments)...)
+    return Expr(:let, assignments, value)
+end
+
 # return the code needed for a pattern.
 code(bound_pattern::BoundTruePattern, binder::BinderContext) = true
 function code(bound_pattern::BoundIsMatchTestPattern, binder::BinderContext)
