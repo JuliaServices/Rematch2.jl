@@ -4,7 +4,7 @@ struct MatchCaseResult
     result_expression::Any
 end
 
-function handle_match_cases(location::LineNumberNode, mod::Module, value, match)
+function handle_match_cases_simple(location::LineNumberNode, mod::Module, value, match)
     if is_case(match)
         # previous version of @match supports `@match(expr, pattern => value)`
         match = Expr(:block, location, match)

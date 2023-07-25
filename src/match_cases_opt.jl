@@ -473,7 +473,7 @@ end
 #
 # Implementation of `@match value begin ... end`
 #
-function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
+function handle_match_cases(location::LineNumberNode, mod::Module, value, body)
     top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(location, mod, value, body)
     result = generate_code(top_down_nodes, value, location, binder)
     @assert is_expr(result, :block)

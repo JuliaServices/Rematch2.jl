@@ -89,7 +89,7 @@ This uses a brute-force code gen strategy, like using a series of if-else statem
 It is used for testing purposes, as a reference for correct semantics.
 """
 macro __match__(value, cases)
-    handle_match_cases(__source__, __module__, value, cases)
+    handle_match_cases_simple(__source__, __module__, value, cases)
 end
 
 """
@@ -106,7 +106,7 @@ Return `result` for the first matching `pattern`.
 If there are no matches, throw `MatchFailure`.
 """
 macro match(value, cases)
-    handle_match2_cases(__source__, __module__, value, cases)
+    handle_match_cases(__source__, __module__, value, cases)
 end
 
 """
