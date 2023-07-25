@@ -88,10 +88,10 @@ macro simplify_top(n, mac)
     end)
 end
 
-# @simplify_top(0, Match.@match(expr))
-# @simplify_top(1, Rematch.@match(expr))
-@simplify_top(2, Rematch2.@match(expr))
-@simplify_top(3, Rematch2.@match2(expr))
+# @simplify_top(0, Match.@__match__(expr))
+# @simplify_top(1, Rematch.@__match__(expr))
+@simplify_top(2, Rematch2.@__match__(expr))
+@simplify_top(3, Rematch2.@match(expr))
 
 @testset "Check some complex cases" begin
 
@@ -145,7 +145,7 @@ end
 
     # function performance_test(expr::Expression)
     #     # GC.gc()
-    #     # println("===================== Match.@match")
+    #     # println("===================== Match.@__match__")
     #     # @time for i in 1:2000000
     #     #     simplify0(expr)
     #     # end
@@ -155,12 +155,12 @@ end
     #         simplify1(expr)
     #     end
     #     GC.gc()
-    #     println("===================== Rematch2.@match")
+    #     println("===================== Rematch2.@__match__")
     #     @time for i in 1:2000000
     #         simplify2(expr)
     #     end
     #     GC.gc()
-    #     println("===================== Rematch2.@match2")
+    #     println("===================== Rematch2.@match")
     #     @time for i in 1:2000000
     #         simplify3(expr)
     #     end
@@ -176,7 +176,7 @@ end
     let
         extract_name(x::Any) = Symbol(string(x))
         extract_name(x::Symbol) = x
-        extract_name(e::Expr) = @match2 e begin
+        extract_name(e::Expr) = @match e begin
             Expr(:type,      [[_, name], _...])  => name
             Expr(:typealias, [[name, _], _...])  => name
             Expr(:call,      [name, _...])       => name

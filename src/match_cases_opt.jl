@@ -471,7 +471,7 @@ function handle_match2_dump_verbose(__source__, __module__, io, value, body)
 end
 
 #
-# Implementation of `@match2 value begin ... end`
+# Implementation of `@match value begin ... end`
 #
 function handle_match2_cases(location::LineNumberNode, mod::Module, value, body)
     top_down_nodes, predeclared_temps, binder = build_deduplicated_automaton(location, mod, value, body)

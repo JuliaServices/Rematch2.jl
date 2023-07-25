@@ -439,7 +439,7 @@ end # of automaton
     function f300(x::T) where { T }
         # The implementation of @match can't bind `T` below - it finds the non-type `T`
         # at module level - so it ignores it.
-        return @match2 x::T begin
+        return @match x::T begin
             _ => 1
         end
     end
@@ -449,7 +449,7 @@ end # of automaton
         let line = 0, file = @__FILE__
             try
                 line = (@__LINE__) + 2
-                @eval @match2 MyPair(1, 2) begin
+                @eval @match MyPair(1, 2) begin
                     MyPair(1, 2) => 3
                 end
                 @test false
@@ -466,20 +466,20 @@ end # of automaton
         # macro match_case(pattern, value)
         #     return esc(:(x => value))
         # end
-        @test (@match2 :x begin
+        @test (@match :x begin
             @match_case pattern 1
         end) == 1
-        @test (@match :x begin
+        @test (@__match__ :x begin
             @match_case pattern 1
         end) == 1
     end
 
     @testset "Some unlikely code" begin
-        @test (@match2 1 begin
+        @test (@match 1 begin
             ::Int && ::Int => 1
         end) == 1
 
-        @test_throws LoadError @eval (@match2 true begin
+        @test_throws LoadError @eval (@match true begin
             x::Bool, if x; true; end => 1
         end)
     end
@@ -517,6 +517,11 @@ end # of automaton
 
     @testset "Abstract types" begin
         x = 2
+        @test (@__match__ x begin
+            ::Abstract1 => 1
+            ::Abstract2 => 2
+            _ => 3
+        end) == 3
         @test (@match x begin
             ::Abstract1 => 1
             ::Abstract2 => 2
@@ -524,9 +529,9 @@ end # of automaton
         end) == 3
     end
 
-    @testset "Nested use of @match2" begin
-        @test (@match2 1 begin
-            x => @match2 2 begin
+    @testset "Nested use of @match" begin
+        @test (@match 1 begin
+            x => @match 2 begin
                 2 => 3x
             end
         end) == 3

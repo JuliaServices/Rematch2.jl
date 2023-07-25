@@ -1,6 +1,6 @@
 module Rematch2
 
-export @match, @match2, MatchFailure, @match_return, @match_fail, @ismatch
+export @match, MatchFailure, @match_return, @match_fail, @ismatch
 
 using MacroTools: MacroTools, @capture
 using Base.Iterators: reverse
