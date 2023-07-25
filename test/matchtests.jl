@@ -267,22 +267,22 @@ end
 
 # Zach Allaun's "Balancing Red-Black Trees" (https://github.com/zachallaun/Match.jl#balancing-red-black-trees)
 
-abstract type RBTree end
+# abstract type RBTree end
 
-struct Leaf <: RBTree
-end
+# struct Leaf <: RBTree
+# end
 
-struct Red <: RBTree
-    value
-    left::RBTree
-    right::RBTree
-end
+# struct Red <: RBTree
+#     value
+#     left::RBTree
+#     right::RBTree
+# end
 
-struct Black <: RBTree
-    value
-    left::RBTree
-    right::RBTree
-end
+# struct Black <: RBTree
+#     value
+#     left::RBTree
+#     right::RBTree
+# end
 
 function balance(tree::RBTree)
     @match tree begin
