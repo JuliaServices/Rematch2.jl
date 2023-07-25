@@ -94,3 +94,15 @@ struct BoolPair
     a::Bool
     b::Bool
 end
+
+#
+# Match.jl used to support the undocumented syntax
+#   @match value, pattern
+# but this is no longer supported.  The tests herein that use it
+# use this macro instead.
+#
+macro test_match(value, pattern)
+    names = unique(collect(Rematch2.getvars(pattern)))
+    sort!(names)
+    esc(Expr(:macrocall, Symbol("@match"), __source__, value, Expr(:call, :(=>), pattern, Expr(:vect, names...))))
+end

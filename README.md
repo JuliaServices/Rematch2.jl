@@ -165,6 +165,7 @@ which was branched from the original [Match.jl](https://github.com/kmsquire/Matc
 * Patterns support interpolation, ie `let x=1; @match ($x,$(x+1)) = (1,2); end` is a match.
 * No support (yet) for matching `Regex` or `UnitRange`.
 * No support (yet) for matching against multidimensional arrays - all array patterns use linear indexing.
+* No support for the (undocumented) syntax `@match value pattern` which returns an array of the bindings of the pattern variables.
 
 ### `Rematch2` differs from `Rematch` in the following ways:
 
