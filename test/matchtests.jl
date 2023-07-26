@@ -301,6 +301,7 @@ end
     @test num_match(12) == "something else"
     @test num_match("hi") == "something else"
     @test num_match('c') == "something else"
+    @test num_match(3:10) == "three to ten"
 end
 
 @testset "char_match" begin

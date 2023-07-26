@@ -1,6 +1,6 @@
-# Rematch2.jl - Pattern-matching for the Julia language
+# Rematch2.jl - Advanced Pattern Matching for Julia
 
-Copyright (c) 2023: RelationalAI, Inc.
+Copyright (c) 2013-2023: Kevin Squire, RelationalAI, Inc, and contributors.
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the

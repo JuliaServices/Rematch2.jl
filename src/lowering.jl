@@ -1,6 +1,6 @@
 # compute whether or not a constant pattern matches a value at runtime
 pattern_matches_value(pattern, input) = isequal(pattern, input)
-pattern_matches_value(r::AbstractRange, i) = i in r
+pattern_matches_value(r::AbstractRange, i) = i in r || isequal(i, r)
 # For compat with Match.jl we permit a Regex to match an identical Regex by isequal
 pattern_matches_value(r::Regex, s::AbstractString) = occursin(r, s)
 
