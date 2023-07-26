@@ -436,11 +436,26 @@ end
         end
     end
 
-    @testset "bad match block syntax" begin
+    @testset "bad match block syntax 1" begin
         let line = 0
             try
                 line = (@__LINE__) + 1
                 @eval @match a (b + c)
+                @test false
+            catch ex
+                @test ex isa LoadError
+                e = ex.error
+                @test e isa ErrorException
+                @test e.msg == "$file:$line: Unrecognized @match block syntax: `b + c`."
+            end
+        end
+    end
+
+    @testset "bad match block syntax 2" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 1
+                @eval @__match__ a (b + c)
                 @test false
             catch ex
                 @test ex isa LoadError
