@@ -544,4 +544,10 @@ end # of automaton
         @test h isa UInt
     end
 
+    @testset "Test the test macro @__match__" begin
+        @test (@__match__ 1 begin
+            1 || 2 => 2
+        end) == 2
+        @test @__match__(1, 1 => 2) == 2
+    end
 end # @testset "Tests that add code coverage"
