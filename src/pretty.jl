@@ -150,9 +150,9 @@ function pretty(io::IO, assignments::ImmutableDict{Symbol, Symbol})
 end
 function pretty(io::IO, p::BoundIsMatchTestPattern)
     print(io, p.force_equality ? "isequal(" : "@ismatch(")
-    pretty(io, p.bound_expression)
-    print(io, ", ")
     pretty(io, p.input)
+    print(io, ", ")
+    pretty(io, p.bound_expression)
     print(io, ")")
 end
 function pretty(io::IO, p::BoundRelationalTestPattern)

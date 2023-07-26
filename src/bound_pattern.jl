@@ -72,7 +72,7 @@ source(p::BoundExpression) = p.source
 # A pattern like `1`, `$(expression)`, or `x` where `x` is already bound.
 # Note that for a pattern variable `x` that is previously bound, `x` means
 # the same thing as `$x` or `$(x)`.  We test a constant pattern by applying
-# `ismatch(pattern.value, input_value)`
+# `pattern_matches_value(pattern.value, input_value)`
 struct BoundIsMatchTestPattern <: BoundTestPattern
     input::Symbol
     bound_expression::BoundExpression
