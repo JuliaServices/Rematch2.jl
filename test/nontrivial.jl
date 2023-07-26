@@ -88,8 +88,8 @@ macro simplify_top(n, mac)
     end)
 end
 
-# @simplify_top(0, Match.@__match__(expr))
-# @simplify_top(1, Rematch.@__match__(expr))
+# @simplify_top(0, Match.@match(expr))
+# @simplify_top(1, Rematch.@match(expr))
 @simplify_top(2, Rematch2.@__match__(expr))
 @simplify_top(3, Rematch2.@match(expr))
 
@@ -145,7 +145,7 @@ end
 
     # function performance_test(expr::Expression)
     #     # GC.gc()
-    #     # println("===================== Match.@__match__")
+    #     # println("===================== Match.@match")
     #     # @time for i in 1:2000000
     #     #     simplify0(expr)
     #     # end
@@ -172,7 +172,7 @@ end
 
 @testset "examples from Match.jl" begin
     # matching expressions, example from Match.jl documentation and VideoIO.jl
-    # Code has been adapted due to https://github.com/gafter/Rematch2.jl/issues/32
+    # Code has been adapted due to https://github.com/JuliaServices/Rematch2.jl/issues/32
     let
         extract_name(x::Any) = Symbol(string(x))
         extract_name(x::Symbol) = x

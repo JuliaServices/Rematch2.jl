@@ -5,7 +5,7 @@ DocMeta.setdocmeta!(Rematch2, :DocTestSetup, :(using Rematch2); recursive=true)
 
 makedocs(;
     modules=[Rematch2],
-    authors="Neal Gafter <neal@gafter.com> and contributors",
+    authors="Neal Gafter <neal.gafter@relational.ai> and contributors",
     repo="https://github.com/JuliaServices/Rematch2.jl/blob/{commit}{path}#{line}",
     sitename="Rematch2.jl",
     format=Documenter.HTML(;

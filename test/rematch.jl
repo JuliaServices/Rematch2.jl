@@ -3,7 +3,7 @@
 # which is earlier than evaluation.  types are looked up during
 # expansion of the @match macro.
 
-@testset "Rematch2.@match tests" begin
+@testset "More @match tests" begin
 
 @testset "Assignments in the value do not leak out" begin
     @match Foo(1, 2) begin
@@ -29,9 +29,40 @@ end
     @test !(@isdefined new_variable)
 end
 
+@testset "A pure type pattern" begin
+    @test (@match ::Symbol = :test1) == :test1
+    @test (@match ::String = "test2") == "test2"
+    @test_throws MatchFailure(:test1) @match ::String = :test1
+    @test_throws MatchFailure("test2") @match ::Symbol = "test2"
+end
+
+@testset "bound variables may be used in subsequent interpolations" begin
+    let x = nothing, y = nothing
+        @test (@match (x, y, $(x + 2)) = (1, 2, 3)) == (1, 2, 3)
+        @test x == 1
+        @test y == 2
+    end
+end
+
 file = Symbol(@__FILE__)
 
 @testset "diagnostics produced are excellent" begin
+
+    @testset "stack trace for MatchFailure" begin
+        let line = 0
+            try
+                line = (@__LINE__) + 1
+                @eval @match ::String = :test1
+                @test false
+            catch e
+                @test e isa MatchFailure
+                @test e.value == :test1
+                top = @where_thrown
+                @test top.file == file
+                @test top.line == line
+            end
+        end
+    end
 
     @testset "could not bind a type" begin
         let line = 0
@@ -46,23 +77,6 @@ file = Symbol(@__FILE__)
                 e = ex.error
                 @test e isa ErrorException
                 @test e.msg == "$file:$line: Could not bind `Unknown` as a type (due to `UndefVarError(:Unknown)`)."
-            end
-        end
-    end
-
-    @testset "attempt to match non-type" begin
-        let line = 0
-            try
-                line = (@__LINE__) + 2
-                @eval @match Foo(1, 2) begin
-                    ::1 => 1
-                end
-                @test false
-            catch ex
-                @test ex isa LoadError
-                e = ex.error
-                @test e isa ErrorException
-                @test e.msg == "$file:$line: Invalid type name: `1`."
             end
         end
     end
@@ -216,21 +230,6 @@ file = Symbol(@__FILE__)
             catch e
                 @test e isa AssertionError
                 @test e.msg == "$file:$line: The type syntax `::String` bound to type String at macro expansion time but Int64 later."
-            end
-        end
-    end
-
-    @testset "bad match block syntax" begin
-        let line = 0
-            try
-                line = (@__LINE__) + 1
-                @eval @match a (b + c)
-                @test false
-            catch ex
-                @test ex isa LoadError
-                e = ex.error
-                @test e isa ErrorException
-                @test e.msg == "$file:$line: Unrecognized @match block syntax: `b + c`."
             end
         end
     end
@@ -477,6 +476,10 @@ end
             Expr(_, [other, _, _]) => other
             end) == :ok
 
+    # test repeated variables (https://github.com/kmsquire/Match.jl/issues/27)
+    @test (@match (x,x) = (1,1)) == (1,1)
+    @test_throws MatchFailure((1,2)) @match (x,x) = (1,2)
+
     # match against single tuples (https://github.com/kmsquire/Match.jl/issues/43)
     @test (@match (:x,) begin
       (:x,) => :ok
@@ -508,6 +511,12 @@ end
 
 @testset "Interpolated Values" begin
     # match against interpolated values
+    let outer = 2, b = nothing, c = nothing
+        @test (@match [1, $outer] = [1,2]) == [1,2]
+        @test (@match (1, $outer, b..., c) = (1,2,3,4,5)) == (1,2,3,4,5)
+        @test b == (3,4)
+        @test c == 5
+    end
     test_interp_pattern = let a=1, b=2, c=3,
                               arr=[10,20,30], tup=(100,200,300)
         _t(x) = @match x begin
