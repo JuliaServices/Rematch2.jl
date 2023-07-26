@@ -22,6 +22,8 @@ struct Foo
     y
 end
 
+##########
+
 abstract type RBTree end
 
 struct Leaf <: RBTree
@@ -39,6 +41,8 @@ struct Black <: RBTree
     right::RBTree
 end
 
+##########
+
 struct Address
     street::AbstractString
     city::AbstractString
@@ -50,6 +54,8 @@ struct Person
     lastname::AbstractString
     address::Address
 end
+
+##########
 
 abstract type Term end
 
@@ -66,6 +72,30 @@ struct App <: Term
     f::Term
     v::Term
 end
+
+Base.:(==)(x::Var, y::Var) = x.name == y.name
+Base.:(==)(x::Fun, y::Fun) = x.arg == y.arg && x.body == y.body
+Base.:(==)(x::App, y::App) = x.f == y.f && x.v == y.v
+
+# Not really the Julian way
+function Base.show(io::IO, term::Term)
+    @match term begin
+        Var(n)    => print(io, n)
+        Fun(x, b) => begin
+            print(io, "^$x.")
+            show(io, b)
+        end
+        App(f, v) => begin
+            print(io, "(")
+            show(io, f)
+            print(io, " ")
+            show(io, v)
+            print(io, ")")
+        end
+    end
+end
+
+##########
 
 struct T207a
     x; y; z
@@ -97,7 +127,13 @@ end
 
 #
 # Match.jl used to support the undocumented syntax
-#   @match value, pattern
+#
+#   @match value pattern
+#
+# or
+#
+#   @match(value, pattern)
+#
 # but this is no longer supported.  The tests herein that use it
 # use this macro instead.
 #
@@ -106,26 +142,4 @@ macro test_match(value, pattern)
     sort!(names)
     result = (length(names) == 1) ? names[1] : Expr(:tuple, names...)
     esc(Expr(:macrocall, Symbol("@match"), __source__, value, Expr(:call, :(=>), pattern, result)))
-end
-
-Base.:(==)(x::Var, y::Var) = x.name == y.name
-Base.:(==)(x::Fun, y::Fun) = x.arg == y.arg && x.body == y.body
-Base.:(==)(x::App, y::App) = x.f == y.f && x.v == y.v
-
-# Not really the Julian way
-function Base.show(io::IO, term::Term)
-    @match term begin
-        Var(n)    => print(io, n)
-        Fun(x, b) => begin
-            print(io, "^$x.")
-            show(io, b)
-        end
-        App(f, v) => begin
-            print(io, "(")
-            show(io, f)
-            print(io, " ")
-            show(io, v)
-            print(io, ")")
-        end
-    end
 end
