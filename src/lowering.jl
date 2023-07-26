@@ -66,7 +66,7 @@ function code(bound_pattern::BoundFetchFieldPattern)
     # As a special case, we pretend that `Symbol` has a field that contains
     # the symbol's name.  This is because we want to be able to match against it.
     # But since there is no such field, we have to special-case it here.
-    if bound_pattern.field_name == fieldnames(Symbol)[1]
+    if bound_pattern.field_name == match_fieldnames(Symbol)[1]
         return :($string($(bound_pattern.input)))
     end
     :($getfield($(bound_pattern.input), $(QuoteNode(bound_pattern.field_name))))

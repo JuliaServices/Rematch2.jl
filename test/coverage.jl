@@ -25,7 +25,7 @@ struct MyPair
     x
     y
 end
-Rematch2.fieldnames(::Type{MyPair}) = error("May not @match MyPair")
+Rematch2.match_fieldnames(::Type{MyPair}) = error("May not @match MyPair")
 
 macro match_case(pattern, value)
     return esc(:($pattern => $value))
@@ -445,7 +445,7 @@ end # of automaton
     end
     @test f300(1) == 1
 
-    @testset "Rematch2.fieldnames(...) throwing" begin
+    @testset "Rematch2.match_fieldnames(...) throwing" begin
         let line = 0, file = @__FILE__
             try
                 line = (@__LINE__) + 2

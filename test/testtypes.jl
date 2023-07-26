@@ -71,7 +71,7 @@ struct T207a
     x; y; z
     T207a(x, y) = new(x, y, x)
 end
-Rematch2.fieldnames(::Type{T207a}) = (:x, :y)
+Rematch2.match_fieldnames(::Type{T207a}) = (:x, :y)
 
 struct T207b
     x; y; z
@@ -82,13 +82,13 @@ struct T207c
     x; y; z
 end
 T207c(x, y) = T207c(x, y, x)
-Rematch2.fieldnames(::Type{T207c}) = (:x, :y)
+Rematch2.match_fieldnames(::Type{T207c}) = (:x, :y)
 
 struct T207d
     x; z; y
     T207d(x, y) = new(x, 23, y)
 end
-Rematch2.fieldnames(::Type{T207d}) = (:x, :y)
+Rematch2.match_fieldnames(::Type{T207d}) = (:x, :y)
 
 struct BoolPair
     a::Bool
