@@ -364,7 +364,7 @@ end # of automaton
 @testset "Tests for node coverage" begin
     @testset "exercise dumpall 1" begin
         devnull = IOBuffer()
-        Rematch2.@match2_dumpall devnull e begin
+        Rematch2.@match_dumpall devnull e begin
             1                            => 1
             Foo(x, x)                    => 2
             y::D                         => 3
@@ -386,13 +386,13 @@ end # of automaton
 
     @testset "exercise dumpall 2" begin
         devnull = IOBuffer()
-        Rematch2.@match2_dumpall devnull some_value begin
+        Rematch2.@match_dumpall devnull some_value begin
             Foo(x, 2) where !f1(x)            => 1
             Foo(1, y) where !f2(y)            => 2
             Foo(x, y) where !(f1(x) || f2(y)) => 3
             _                                 => 5
         end
-        Rematch2.@match2_dump devnull some_value begin
+        Rematch2.@match_dump devnull some_value begin
             Foo(x, 2) where !f1(x)            => 1
             Foo(1, y) where !f2(y)            => 2
             Foo(x, y) where !(f1(x) || f2(y)) => 3

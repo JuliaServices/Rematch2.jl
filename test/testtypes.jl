@@ -104,5 +104,28 @@ end
 macro test_match(value, pattern)
     names = unique(collect(Rematch2.getvars(pattern)))
     sort!(names)
-    esc(Expr(:macrocall, Symbol("@match"), __source__, value, Expr(:call, :(=>), pattern, Expr(:vect, names...))))
+    result = (length(names) == 1) ? names[1] : Expr(:tuple, names...)
+    esc(Expr(:macrocall, Symbol("@match"), __source__, value, Expr(:call, :(=>), pattern, result)))
+end
+
+Base.:(==)(x::Var, y::Var) = x.name == y.name
+Base.:(==)(x::Fun, y::Fun) = x.arg == y.arg && x.body == y.body
+Base.:(==)(x::App, y::App) = x.f == y.f && x.v == y.v
+
+# Not really the Julian way
+function Base.show(io::IO, term::Term)
+    @match term begin
+        Var(n)    => print(io, n)
+        Fun(x, b) => begin
+            print(io, "^$x.")
+            show(io, b)
+        end
+        App(f, v) => begin
+            print(io, "(")
+            show(io, f)
+            print(io, " ")
+            show(io, v)
+            print(io, ")")
+        end
+    end
 end

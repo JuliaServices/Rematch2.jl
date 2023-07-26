@@ -7,12 +7,12 @@ using Random
 using MacroTools: MacroTools
 
 include("testtypes.jl")
-# include("rematch.jl")
-# include("coverage.jl")
-# include("nontrivial.jl")
-# include("topological.jl")
-# include("match_return.jl")
-# include("test_ismatch.jl")
+include("rematch.jl")
+include("coverage.jl")
+include("nontrivial.jl")
+include("topological.jl")
+include("match_return.jl")
+include("test_ismatch.jl")
 include("matchtests.jl")
 
 retest(Rematch2Tests)
