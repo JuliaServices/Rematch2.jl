@@ -6,7 +6,7 @@
 
 file = Symbol(@__FILE__)
 
-@enum Color Yellow Green Blue
+@enum Color Yellow Blue Greed
 
 macro casearm1(pattern, value)
     esc(:($pattern => $value))
@@ -34,6 +34,33 @@ end
     end
     @test is_ipv4_address("192.168.0.5")
     @test !is_ipv4_address("www.gafter.com")
+end
+
+@testset "identical regex matching" begin
+    function func(x)
+        @match x begin
+            r"abc" => true
+            _ => false
+        end
+    end
+    # check that we are backward compatible in allowing a regex to match a regex.
+    @test func("abc")
+    @test func(r"abc")
+    @test !func(:abc)
+end
+
+@testset "identical range matching" begin
+    function func(x)
+        @match x begin
+            3:10 => true
+            _ => false
+        end
+    end
+    # check that we are backward compatible in allowing a range to match a range.
+    @test func(3)
+    @test func(10)
+    @test func(3:10)
+    @test !func(2:9)
 end
 
 @testset "Check that `,if condition end` guards are parsed properly 1" begin
@@ -614,6 +641,18 @@ end
     @test f(1.0) == 4
     @test f(-0.0) == 2
     @test f(2.0) == 3
+end
+
+@testset "ensure that enums work" begin
+    # @enum Color Yellow Blue Greed
+    function f(v)
+        @match v begin
+            $Greed => "Greed is the color of money."
+            _ => "other"
+        end
+    end
+    @test f(Greed) == "Greed is the color of money."
+    @test f(Yellow) == "other"
 end
 
 end

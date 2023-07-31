@@ -134,8 +134,8 @@ end
 #
 #   @match(value, pattern)
 #
-# but this is no longer supported.  The tests herein that use it
-# use this macro instead.
+# but this is no longer supported.  The tests herein that used to use
+# it now use this macro instead.
 #
 macro test_match(value, pattern)
     names = unique(collect(Rematch2.getvars(pattern)))

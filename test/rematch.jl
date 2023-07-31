@@ -470,28 +470,28 @@ end
 end
 
 @testset "Miscellanea" begin
-    # match against fiddly symbols (https://github.com/kmsquire/Match.jl/issues/32)
+    # match against fiddly symbols (https://github.com/JuliaServices/Match.jl/issues/32)
     @test (@match :(@when a < b) begin
             Expr(_, [Symbol("@when"), _, _]) => :ok
             Expr(_, [other, _, _]) => other
             end) == :ok
 
-    # test repeated variables (https://github.com/kmsquire/Match.jl/issues/27)
+    # test repeated variables (https://github.com/JuliaServices/Match.jl/issues/27)
     @test (@match (x,x) = (1,1)) == (1,1)
     @test_throws MatchFailure((1,2)) @match (x,x) = (1,2)
 
-    # match against single tuples (https://github.com/kmsquire/Match.jl/issues/43)
+    # match against single tuples (https://github.com/JuliaServices/Match.jl/issues/43)
     @test (@match (:x,) begin
       (:x,) => :ok
     end) == :ok
 
-    # match against empty structs (https://github.com/kmsquire/Match.jl/issues/43)
+    # match against empty structs (https://github.com/JuliaServices/Match.jl/issues/43)
     e = (True(), 1)
     @test (@match e begin
         (True(), x) => x
     end) == 1
 
-    # symbols are not interpreted as variables (https://github.com/kmsquire/Match.jl/issues/45)
+    # symbols are not interpreted as variables (https://github.com/JuliaServices/Match.jl/issues/45)
     let x = 42
         @test (@match (:x,) begin
           (:x,) => x
