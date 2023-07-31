@@ -1,7 +1,7 @@
 """
     @match_fail
 
-This statement permits early-exit from the value of a @match2 case.
+This statement permits early-exit from the value of a @match case.
 The programmer may write the value as a `begin ... end` and then,
 within the value, the programmer may write
 
@@ -14,13 +14,13 @@ rule "*really*" matched.
 macro match_fail()
     # These are rewritten during expansion of the `@match` macro,
     # so the actual macro should not be used directly.
-    error("$(__source__.file):$(__source__.line): @match_fail may only be used within the value of a @match2 case.")
+    error("$(__source__.file):$(__source__.line): @match_fail may only be used within the value of a @match case.")
 end
 
 """
     @match_return value
 
-This statement permits early-exit from the value of a @match2 case.
+This statement permits early-exit from the value of a @match case.
 The programmer may write the value as a `begin ... end` and then,
 within the value, the programmer may write
 
@@ -32,7 +32,7 @@ given value.
 macro match_return(x)
     # These are rewritten during expansion of the `@match` macro,
     # so the actual macro should not be used.
-    error("$(__source__.file):$(__source__.line): @match_return may only be used within the value of a @match2 case.")
+    error("$(__source__.file):$(__source__.line): @match_return may only be used within the value of a @match case.")
 end
 
 #
@@ -93,7 +93,7 @@ function adjust_case_for_return_macro(__module__, location, pattern, result, pre
             return Expr(:block, p.args[2], :($value = $MatchFailure), :(@goto $label))
         elseif length(p.args) == 4 &&
             (p.args[1] == :var"@match" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match")) ||
-             p.args[1] == :var"@match2" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match2")))
+             p.args[1] == :var"@match" || p.args[1] == Expr(:., Symbol(string(@__MODULE__)), QuoteNode(:var"@match")))
             # Nested uses of @match should be treated as independent
             return macroexpand(__module__, p)
         else

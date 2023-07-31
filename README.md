@@ -10,12 +10,10 @@ that offers improved performance at runtime, additional pattern forms, and impro
 variable scopes.
 
 `Rematch2.jl` provides a syntax sugar for matching Julia values against syntactic
-patterns. The `@match2` macro expands a pattern-matching syntax into a decision automaton
+patterns. The `@match` macro expands a pattern-matching syntax into a decision automaton
 that performs a series of tests to determine the first pattern that matches the input.
 These tests check the types and structure of the provided value according to the pattern,
 allowing you to more simply write checks that describe your intent.
-
-For compatibility with users of `Rematch.jl`, we also support `@match`.
 
 ``` julia
 julia> using Rematch2
@@ -25,7 +23,7 @@ julia> struct Foo
            y::String
        end
 
-julia> f(x) = @match2 x begin
+julia> f(x) = @match x begin
            _::String => :string
            [a,a,a] => (:all_the_same, a)
            [a,bs...,c] => (:at_least_2, a, bs, c)
@@ -77,14 +75,14 @@ Stacktrace:
 
 ### Assignment Syntax
 ``` julia
-@match2 pattern = value
+@match pattern = value
 ```
 
 If value matches pattern, binds variables and returns `value`. Otherwise, throws `MatchFailure`.
 
 After evaluation, any variable names used within `pattern` will be bound as new variables in the enclosing scope. For example:
 ```julia
-julia> @match2 Foo(x,2) = Foo(1,2)
+julia> @match Foo(x,2) = Foo(1,2)
 Foo(1,2)
 
 julia> x
@@ -94,7 +92,7 @@ julia> x
 ### Case Syntax
 
 ``` julia
-@match2 value begin
+@match value begin
     pattern1 => result1
     pattern2 => result2
     ...
@@ -132,7 +130,7 @@ Repeated variables only match if they are equal (`==`). For example `(x,x)` matc
 Inside the result part of a case, you can cause the pattern to fail (as if the pattern does not match), or you can return a value early:
 
 ```julia
-@match2 value begin
+@match value begin
     pattern1 => begin
         if some_failure_condition
             @match_fail
@@ -157,24 +155,22 @@ Otherwise `2` is the result.
 This package was branched from [Rematch.jl](https://github.com/RelationalAI-oss/Rematch.jl),
 which was branched from the original [Match.jl](https://github.com/kmsquire/Match.jl).
 
-For backward compatibility, we support the `@match` syntax in addition to our own `@match2` syntax.
-If we make this a new revision of `Rematch`, only `@match` will be supported.
-
 ### `Rematch` differs from `Match` in the following ways:
 
 * If no branches are matched, throws `MatchFailure` instead of returning nothing.
 * Matching against a struct with the wrong number of fields produces an error instead of silently failing.
-* Repeated variables require equality, ie `@match2 (1,2) begin (x,x) => :ok end` fails.
+* Repeated variables require equality, ie `@match (1,2) begin (x,x) => :ok end` fails.
 * The syntax for guards is `x where x > 1` instead of `x, if x > 1 end` and can occur anywhere in a pattern.
-* Structs can be matched by field-names, allowing partial matches: `@match2 Foo(1,2) begin Foo(y=2) => :ok end` returns `:ok`.
-* Patterns support interpolation, ie `let x=1; @match2 ($x,$(x+1)) = (1,2); end` is a match.
+* Structs can be matched by field-names, allowing partial matches: `@match Foo(1,2) begin Foo(y=2) => :ok end` returns `:ok`.
+* Patterns support interpolation, ie `let x=1; @match ($x,$(x+1)) = (1,2); end` is a match.
 * No support (yet) for matching `Regex` or `UnitRange`.
 * No support (yet) for matching against multidimensional arrays - all array patterns use linear indexing.
+* No support for the (undocumented) syntax `@match value pattern` which returns an array of the bindings of the pattern variables.
 
 ### `Rematch2` differs from `Rematch` in the following ways:
 
 * Errors always identify a specific line in the user's program where the problem occurred.
-* Previously bound variables may now be used in interpolations, ie `@match2 (x, $(x+2)) = (1, 3)` is a match.
+* Previously bound variables may now be used in interpolations, ie `@match (x, $(x+2)) = (1, 3)` is a match.
 * A pure type match (without another pattern) can be written as `::Type`.
 * Types appearing in type patterns (`::Type`) and struct patterns (`Type(...)`) are bound at macro-expansion time in the context of the module containing the macro usage.  As a consequence, you cannot use certain type expressions that would differ.  For example, you cannot use a type parameter or a local variable containing a type.  The generated code checks that the type is the same at evaluation time as it was at macro expansion time, and an error is thrown if they differ.  If this rare incompatibility affects you, you can use `x where x isa Type` as a workaround.  If the type is not defined at macro-expansion time, an error is issued.
 * A warning is issued at macro-expansion time if a case cannot be reached because it is subsumed by prior cases.

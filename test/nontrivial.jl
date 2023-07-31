@@ -90,8 +90,8 @@ end
 
 # @simplify_top(0, Match.@match(expr))
 # @simplify_top(1, Rematch.@match(expr))
-@simplify_top(2, Rematch2.@match(expr))
-@simplify_top(3, Rematch2.@match2(expr))
+@simplify_top(2, Rematch2.@__match__(expr))
+@simplify_top(3, Rematch2.@match(expr))
 
 @testset "Check some complex cases" begin
 
@@ -155,12 +155,12 @@ end
     #         simplify1(expr)
     #     end
     #     GC.gc()
-    #     println("===================== Rematch2.@match")
+    #     println("===================== Rematch2.@__match__")
     #     @time for i in 1:2000000
     #         simplify2(expr)
     #     end
     #     GC.gc()
-    #     println("===================== Rematch2.@match2")
+    #     println("===================== Rematch2.@match")
     #     @time for i in 1:2000000
     #         simplify3(expr)
     #     end
@@ -172,11 +172,11 @@ end
 
 @testset "examples from Match.jl" begin
     # matching expressions, example from Match.jl documentation and VideoIO.jl
-    # Code has been adapted due to https://github.com/gafter/Rematch2.jl/issues/32
+    # Code has been adapted due to https://github.com/JuliaServices/Rematch2.jl/issues/32
     let
         extract_name(x::Any) = Symbol(string(x))
         extract_name(x::Symbol) = x
-        extract_name(e::Expr) = @match2 e begin
+        extract_name(e::Expr) = @match e begin
             Expr(:type,      [[_, name], _...])  => name
             Expr(:typealias, [[name, _], _...])  => name
             Expr(:call,      [name, _...])       => name

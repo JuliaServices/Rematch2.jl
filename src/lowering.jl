@@ -1,9 +1,8 @@
 # compute whether or not a constant pattern matches a value at runtime
-# For compat with Match.jl the order of arguments is reversed from @ismatch
-ismatch(pattern, input) = isequal(pattern, input)
-ismatch(r::AbstractRange, i) = i in r
+pattern_matches_value(pattern, input) = isequal(pattern, input)
+pattern_matches_value(r::AbstractRange, i) = i in r
 # For compat with Match.jl we permit a Regex to match an identical Regex by isequal
-ismatch(r::Regex, s::AbstractString) = occursin(r, s)
+pattern_matches_value(r::Regex, s::AbstractString) = occursin(r, s)
 
 function assignments(assigned::ImmutableDict{Symbol, Symbol})
     # produce a list of assignments to be splatted into the caller
@@ -19,7 +18,7 @@ end
 # return the code needed for a pattern.
 code(bound_pattern::BoundTruePattern, binder::BinderContext) = true
 function code(bound_pattern::BoundIsMatchTestPattern, binder::BinderContext)
-    func = bound_pattern.force_equality ? Base.isequal : (@__MODULE__).ismatch
+    func = bound_pattern.force_equality ? Base.isequal : (@__MODULE__).pattern_matches_value
     :($func($(code(bound_pattern.bound_expression)), $(bound_pattern.input)))
 end
 function code(bound_pattern::BoundRelationalTestPattern, binder::BinderContext)
@@ -67,7 +66,7 @@ function code(bound_pattern::BoundFetchFieldPattern)
     # As a special case, we pretend that `Symbol` has a field that contains
     # the symbol's name.  This is because we want to be able to match against it.
     # But since there is no such field, we have to special-case it here.
-    if bound_pattern.field_name == fieldnames(Symbol)[1]
+    if bound_pattern.field_name == match_fieldnames(Symbol)[1]
         return :($string($(bound_pattern.input)))
     end
     :($getfield($(bound_pattern.input), $(QuoteNode(bound_pattern.field_name))))

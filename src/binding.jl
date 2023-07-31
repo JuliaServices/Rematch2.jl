@@ -239,7 +239,7 @@ function bind_pattern!(
         pattern0, assigned = bind_pattern!(location, :(::($T)), input, binder, assigned)
         bound_type = (pattern0::BoundTypeTestPattern).type
         patterns = BoundPattern[pattern0]
-        field_names::Tuple = fieldnames(bound_type)
+        field_names::Tuple = match_fieldnames(bound_type)
         if match_positionally && len != length(field_names)
             error("$(location.file):$(location.line): The type `$bound_type` has " *
                   "$(length(field_names)) fields but the pattern expects $len fields.")
@@ -261,7 +261,7 @@ function bind_pattern!(
             end
 
             field_type = nothing
-            if field_name == fieldnames(Symbol)[1]
+            if field_name == match_fieldnames(Symbol)[1]
                 # special case Symbol's hypothetical name field.
                 field_type = String
             else
@@ -440,21 +440,21 @@ function join_where_clause(pattern, where_clause, location, binder, assigned)
     end
 end
 
-#
-# Return a tuple containing the ordered list of the names (as Symbols) of fields that
-# can be matched either nominally or positionally.  This list should exclude synthetic
-# fields that are produced by packages such as Mutts and AutoHashEqualsCached.  This
-# function may be overridden by the client to hide fields that should not be matched.
-#
-function fieldnames(type::Type)
-    # TODO: is this a reasonable name for this function?  Clients who add hidden fields
-    # to their types will need to override this function to hide those fields.  The name
-    # is not exported, so it should not conflict with Base.fieldnames.
+"""
+    match_fieldnames(type::Type)
+
+Return a tuple containing the ordered list of the names (as Symbols) of fields that
+can be matched either nominally or positionally.  This list should exclude synthetic
+fields that are produced by packages such as Mutts and AutoHashEqualsCached.  This
+function may be overridden by the client to hide fields that should not be matched.
+"""
+function match_fieldnames(type::Type)
     Base.fieldnames(type)
 end
+
 # For the purposes of pattern-matching, we pretend that `Symbol` has a single field.
 const symbol_field_name = Symbol("«name(::Symbol)»")
-fieldnames(::Type{Symbol}) = (symbol_field_name,)
+match_fieldnames(::Type{Symbol}) = (symbol_field_name,)
 
 #
 # Shred a `where` clause into its component parts, conjunct by conjunct.  If necessary,

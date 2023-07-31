@@ -15,7 +15,7 @@ end
 @testset "@match_return tests" begin
 
 @testset "simple uses work correctly" begin
-    @test (@match2 Foo(1, 2) begin
+    @test (@match Foo(1, 2) begin
         Foo(x, 2) => begin
             x
             @match_fail
@@ -29,7 +29,7 @@ end
 
 file = Symbol(@__FILE__)
 
-@testset "uses of early-exit macros outside @match2 produce errors 1" begin
+@testset "uses of early-exit macros outside @match produce errors 1" begin
     let line = 0
         try
             line = (@__LINE__) + 1
@@ -39,12 +39,12 @@ file = Symbol(@__FILE__)
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: @match_return may only be used within the value of a @match2 case."
+            @test e.msg == "$file:$line: @match_return may only be used within the value of a @match case."
         end
     end
 end
 
-@testset "uses of early-exit macros outside @match2 produce errors 2" begin
+@testset "uses of early-exit macros outside @match produce errors 2" begin
     let line = 0
         try
             line = (@__LINE__) + 1
@@ -54,12 +54,12 @@ end
             @test ex isa LoadError
             e = ex.error
             @test e isa ErrorException
-            @test e.msg == "$file:$line: @match_fail may only be used within the value of a @match2 case."
+            @test e.msg == "$file:$line: @match_fail may only be used within the value of a @match case."
         end
     end
 end
 
-@testset "uses of early-exit macros outside @match2 produce errors 3" begin
+@testset "uses of early-exit macros outside @match produce errors 3" begin
     try
         @eval @match_fail nothing
         @test false
@@ -71,9 +71,9 @@ end
 end
 
 @testset "nested uses do not interfere with each other" begin
-    @test (@match2 1 begin
+    @test (@match 1 begin
         1 => begin
-            t = @match2 1 begin
+            t = @match 1 begin
                 1 => begin
                     # yield from inner only
                     @match_return 1
@@ -88,7 +88,7 @@ end
 end
 
 @testset "a macro may expand to @match_return or @match_fail" begin
-    @test (@match2 Foo(1, 2) begin
+    @test (@match Foo(1, 2) begin
         Foo(x, 2) => begin
             x
             @user_match_fail
@@ -101,7 +101,7 @@ end
 end
 
 @testset "a macro may use the long form 1" begin
-    @test (@match2 Foo(1, 2) begin
+    @test (@match Foo(1, 2) begin
         Foo(x, 2) => begin
             x
             Rematch2.@match_fail
@@ -114,7 +114,7 @@ end
 end
 
 @testset "a macro may use the long form 2" begin
-    @test (@match2 Foo(1, 2) begin
+    @test (@match Foo(1, 2) begin
         Foo(x, 2) => begin
             x
             @Rematch2.match_fail

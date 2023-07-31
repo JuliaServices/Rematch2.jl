@@ -75,16 +75,21 @@ end
 
 """
 Usage:
-
 ```
-    @match2 pattern = value
+    @__match__ value begin
+        pattern1 => result1
+        pattern2 => result2
+        ...
+    end
 ```
 
-If `value` matches `pattern`, bind variables and return `value`.
-Otherwise, throw `MatchFailure`.
+Return `result` for the first matching `pattern`.
+If there are no matches, throw `MatchFailure`.
+This uses a brute-force code gen strategy, like using a series of if-else statements.
+It is used for testing purposes, as a reference for correct semantics.
 """
-macro match2(expr)
-    handle_match_eq(__source__, __module__, expr)
+macro __match__(value, cases)
+    handle_match_cases_simple(__source__, __module__, value, cases)
 end
 
 """
@@ -99,29 +104,9 @@ Usage:
 
 Return `result` for the first matching `pattern`.
 If there are no matches, throw `MatchFailure`.
-This uses a brute-force code gen strategy, like using a series of if-else statements.
-It is used for testing purposes, as a reference for correct semantics.
 """
 macro match(value, cases)
     handle_match_cases(__source__, __module__, value, cases)
-end
-
-"""
-Usage:
-```
-    @match2 value begin
-        pattern1 => result1
-        pattern2 => result2
-        ...
-    end
-```
-
-Return `result` for the first matching `pattern`.
-If there are no matches, throw `MatchFailure`.
-This is like @match, but generaties more efficient code.
-"""
-macro match2(value, cases)
-    handle_match2_cases(__source__, __module__, value, cases)
 end
 
 """
@@ -130,7 +115,7 @@ This macro has two forms.
 - The single-pattern form:
 
 ```
-    @match2 pattern = value
+    @match pattern = value
 ```
 
   If `value` matches `pattern`, bind variables and return `value`.
@@ -139,7 +124,7 @@ This macro has two forms.
 - The multi-pattern form:
 
 ```
-    @match2 value begin
+    @match value begin
         pattern1 => result1
         pattern2 => result2
         ...
