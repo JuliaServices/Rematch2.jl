@@ -124,45 +124,43 @@ end
     @test parse_arg("-h") == parse_arg("--help") == "Help!"
 end
 
+#
 # Regular Expressions
+#
+# We do not currently support complex regular expression patterns with subpatterns.
+# If and when we do, the following tests might be useful.
+#
+@testset "Complex regular expression patterns are not supported" begin
+    # function regex_test(str)
+    #     ## Defining these in the function doesn't work, because the macro
+    #     ## (and related functions) don't have access to the local
+    #     ## variables.
 
-# TODO: Fix me!
+    #     # Ipv4Addr = r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})"
+    #     # EmailAddr = r"\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,4})\b"i
 
-# Note: the following test only works because Ipv4Addr and EmailAddr
-# are (module-level) globals!
+    #     @match str begin
+    #         Ipv4Addr(_, _, octet3, _),       if int(octet3) > 30 end => "IPv4 address with octet 3 > 30"
+    #         Ipv4Addr()                                               => "IPv4 address"
 
-# const Ipv4Addr = r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})"
-# const EmailAddr = r"\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,4})\b"i
+    #         EmailAddr(_,domain), if endswith(domain, "ucla.edu") end => "UCLA email address"
+    #         EmailAddr                                                => "Some email address"
 
-# function regex_test(str)
-#     ## Defining these in the function doesn't work, because the macro
-#     ## (and related functions) don't have access to the local
-#     ## variables.
+    #         r"MCM.*"                                                 => "In the twentieth century..."
 
-#     # Ipv4Addr = r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})"
-#     # EmailAddr = r"\b([A-Z0-9._%+-]+)@([A-Z0-9.-]+\.[A-Z]{2,4})\b"i
+    #         _                                                        => "No match"
+    #     end
+    # end
 
-#     @match str begin
-#         Ipv4Addr(_, _, octet3, _),       if int(octet3) > 30 end => "IPv4 address with octet 3 > 30"
-#         Ipv4Addr()                                               => "IPv4 address"
+    # @test regex_test("128.97.27.37")                 == "IPv4 address"
+    # @test regex_test("96.17.70.24")                  == "IPv4 address with octet 3 > 30"
 
-#         EmailAddr(_,domain), if endswith(domain, "ucla.edu") end => "UCLA email address"
-#         EmailAddr                                                => "Some email address"
+    # @test regex_test("beej@cs.ucla.edu")             == "UCLA email address"
+    # @test regex_test("beej@uchicago.edu")            == "Some email address"
 
-#         r"MCM.*"                                                 => "In the twentieth century..."
-
-#         _                                                        => "No match"
-#     end
-# end
-
-# @test regex_test("128.97.27.37")                 == "IPv4 address"
-# @test regex_test("96.17.70.24")                  == "IPv4 address with octet 3 > 30"
-
-# @test regex_test("beej@cs.ucla.edu")             == "UCLA email address"
-# @test regex_test("beej@uchicago.edu")            == "Some email address"
-
-# @test regex_test("MCMLXXII")                     == "In the twentieth century..."
-# @test regex_test("Open the pod bay doors, HAL.") == "No match"
+    # @test regex_test("MCMLXXII")                     == "In the twentieth century..."
+    # @test regex_test("Open the pod bay doors, HAL.") == "No match"
+end
 
 @testset "Pattern extraction from arrays" begin
     # Pattern extraction from arrays
@@ -178,35 +176,35 @@ end
     @test @test_match([1:10;], [1, a..., 9, 10])                       == [2:8;]
 
     # match / collect columns
-    # @test @test_match([1 2 3; 4 5 6], [a b...])                    == ([1, 4], [2 3; 5 6])
-    # @test @test_match([1 2 3; 4 5 6], [a... b])                    == ([1 2; 4 5], [3, 6])
-    # @test @test_match([1 2 3; 4 5 6], [a b c])                     == ([1, 4], [2, 5], [3, 6])
-    # @test @test_match([1 2 3; 4 5 6], [[1, 4] a b])                 == ([2, 5], [3, 6])
+    # @test_broken @test_match([1 2 3; 4 5 6], [a b...])                    == ([1, 4], [2 3; 5 6])
+    # @test_broken @test_match([1 2 3; 4 5 6], [a... b])                    == ([1 2; 4 5], [3, 6])
+    # @test_broken @test_match([1 2 3; 4 5 6], [a b c])                     == ([1, 4], [2, 5], [3, 6])
+    # @test_broken @test_match([1 2 3; 4 5 6], [[1, 4] a b])                 == ([2, 5], [3, 6])
 
-    # @test @test_match([1 2 3 4; 5 6 7 8], [a b... c])              == ([1, 5], [2 3; 6 7], [4, 8])
+    # @test_broken @test_match([1 2 3 4; 5 6 7 8], [a b... c])              == ([1, 5], [2 3; 6 7], [4, 8])
 
 
     # match / collect rows
-    # @test @test_match([1 2 3; 4 5 6], [a, b])                      == ([1, 2, 3], [4, 5, 6])
-    # @test @test_match([1 2 3; 4 5 6], [[1, 2, 3], a])                ==  [4, 5, 6]             # TODO: don't match this
-    #@test @test_match([1 2 3; 4 5 6], [1 2 3; a])                  ==  [4,5,6]
+    @test_broken @test_match([1 2 3; 4 5 6], [a, b])                      == ([1, 2, 3], [4, 5, 6])
+    @test_broken @test_match([1 2 3; 4 5 6], [[1, 2, 3], a])              ==  [4, 5, 6]             # TODO: don't match this
+    # @test_broken @test_match([1 2 3; 4 5 6], [1 2 3; a])                  ==  [4,5,6]
 
-    # @test @test_match([1 2 3; 4 5 6; 7 8 9], [a, b...])            == ([1, 2, 3], [4 5 6; 7 8 9])
-    # @test @test_match([1 2 3; 4 5 6; 7 8 9], [a..., b])            == ([1 2 3; 4 5 6], [7, 8, 9])
-    #@test @test_match([1 2 3; 4 5 6; 7 8 9], [1 2 3; a...])        ==  [4 5 6; 7 8 9]
+    @test_broken @test_match([1 2 3; 4 5 6; 7 8 9], [a, b...])            == ([1, 2, 3], [4 5 6; 7 8 9])
+    @test_broken @test_match([1 2 3; 4 5 6; 7 8 9], [a..., b])            == ([1 2 3; 4 5 6], [7, 8, 9])
+    # @test_broken @test_match([1 2 3; 4 5 6; 7 8 9], [1 2 3; a...])        ==  [4 5 6; 7 8 9]
 
-    #@test @test_match([1 2 3; 4 5 6; 7 8 9; 10 11 12], [a,b...,c]) == ([1,2,3], [4 5 6; 7 8 9], [10 11 12])
+    @test_broken @test_match([1 2 3; 4 5 6; 7 8 9; 10 11 12], [a,b...,c]) == ([1,2,3], [4 5 6; 7 8 9], [10 11 12])
 
     # match invidual positions
-    #@test @test_match([1 2; 3 4], [1 a; b c])                      == (2,3,4)
-    #@test @test_match([1 2; 3 4], [1 a; b...])                     == (2,[3,4])
+    # @test_broken @test_match([1 2; 3 4], [1 a; b c])                      == (2,3,4)
+    # @test_broken @test_match([1 2; 3 4], [1 a; b...])                     == (2,[3,4])
 
-    # @test @test_match([ 1  2  3  4
+    # @test_broken @test_match([ 1  2  3  4
     #                  5  6  7  8
     #                  9 10 11 12
     #                 13 14 15 16
     #                 17 18 19 20 ],
-    #
+
     #                 [1      a...
     #                  b...
     #                  c... 15 16
@@ -217,7 +215,7 @@ end
 
     # match 3D arrays
     m = reshape([1:8;], (2, 2, 2))
-    # @test @test_match(m, [a b])                                    == ([1 3; 2 4], [5 7; 6 8])
+    # @test_broken @test_match(m, [a b])                                    == ([1 3; 2 4], [5 7; 6 8])
 end
 
 @testset "match against an expression" begin
