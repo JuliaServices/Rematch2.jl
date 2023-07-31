@@ -22,6 +22,25 @@ Pkg.add("Rematch2")
 
 # Usage
 
+## Simple-pattern `@ismatch` macro
+
+The `@ismatch` macro tests if a value patches a given pattern, returning
+either `true` if it matches, or `false` if it does not.  When the pattern matches,
+the variables named in the pattern are bound and can be used.
+
+```julia-repl
+julia> using Rematch2
+
+julia> @ismatch (1, 2) (x, y)
+true
+
+julia> x
+1
+
+julia> y
+2
+```
+
 ## Multi-case `@match` macro
 
 The `@match` macro acts as a pattern-matching switch statement,
@@ -239,7 +258,7 @@ We are considering adding that back again.
 
 ## Deep Matching Against Arrays
 
-Arrays are intrinsic components of Julia. Match allows deep matching against vectors.
+Arrays are intrinsic components of Julia. Match allows deep matching against single-dimensional vectors.
 
 Match previously supported multidimensional arrays.  If there is sufficient demand, we'll add support for that again.
 
@@ -248,26 +267,24 @@ The following examples also demonstrate how Match can be used strictly for its e
 ### Extract first element, rest of vector
 
 ```julia
-julia> @match([1:4], [a,b...]);
+julia> @ismatch 1:4 [a,b...]
+true
 
 julia> a
 1
 
 julia> b
-3-element SubArray{Int64,1,Array{Int64,1},(Range1{Int64},)}:
- 2
- 3
- 4
+2:4
 ```
 
 ### Match values at the beginning of a vector
 
 ```julia
-julia> @match([1:5], [1,2,a...])
- 3-element SubArray{Int64,1,Array{Int64,1},(Range1{Int64},)}:
-  3
-  4
-  5
+julia> @ismatch 1:5 [1,2,a...]
+true
+
+julia> a
+3:5
 ```
 
 ### Notes/Gotchas

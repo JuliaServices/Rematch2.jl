@@ -57,7 +57,7 @@ for examples of this and other features.
 * `x, if condition end` matches only if `condition` is true (`condition` may use any variables that occur earlier in the pattern eg `(x, y, z where x + y > z)`)
 * `x where condition` An alternative form for `x, if condition end`
 * Anything else is treated as a constant and tested for equality
-* Expressions can be interpolated in as constants via standard interpolation syntax `\$(x)`  Interpolations may use previously bound variables.
+* Expressions can be interpolated in as constants via standard interpolation syntax `\$(x)`.  Interpolations may use previously bound variables.
 
 Patterns can be nested arbitrarily.
 
