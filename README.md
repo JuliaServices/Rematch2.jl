@@ -1,3 +1,5 @@
+# This package has been archived.  Please use https://github.com/JuliaServices/Match.jl instead!
+
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/stable/)
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaServices.github.io/Rematch2.jl/dev/)
 [![Build Status](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaServices/Rematch2.jl/actions/workflows/CI.yml?query=branch%3Amain)
